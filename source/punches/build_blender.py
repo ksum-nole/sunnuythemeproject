@@ -62,15 +62,15 @@ rig.animation_data.action=None
 for side,start in [('Left',15),('Right',90)]:
  track=rig.animation_data.nla_tracks.new();track.name=side+' punch preview';strip=track.strips.new(side+' punch',start,actions[side]);strip.extrapolation='NOTHING';strip.blend_type='REPLACE'
  scene.timeline_markers.new(side.upper()+' | WINDUP',frame=start);scene.timeline_markers.new(side.upper()+' | CONTACT',frame=start+round(data['actions'][side]['impact']*60))
-scene.frame_start=0;scene.frame_end=150
+scene.frame_start=0;scene.frame_end=195
 floor_mat=material('Studio | deep slate',(.018,.032,.045),.1,.65);bpy.ops.mesh.primitive_plane_add(size=200);floor=bpy.context.object;floor.name='Studio floor';floor.location.z=-.015;floor.data.materials.append(floor_mat)
 for loc,energy,size,color in [((5,7,11),1500,7,(.72,.9,1)),((-7,3,6),1050,5,(.23,.62,1)),((2,-6,8),1800,5,(1,.84,.66))]:
  bpy.ops.object.light_add(type='AREA',location=loc);light=bpy.context.object;light.data.energy=energy;light.data.size=size;light.data.color=color;light.rotation_euler=(Vector((0,.3,2.5))-light.location).to_track_quat('-Z','Y').to_euler()
 bpy.ops.object.camera_add(location=(8,12,7));camera=bpy.context.object;camera.rotation_euler=(Vector((0,.3,2.5))-camera.location).to_track_quat('-Z','Y').to_euler();camera.data.type='ORTHO';camera.data.ortho_scale=8;scene.camera=camera
 scene.world=bpy.data.worlds.new('Punch studio');scene.world.use_nodes=True;scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.06,.1,.14,1);scene.world.node_tree.nodes['Background'].inputs[1].default_value=.5
 scene.render.engine='CYCLES';scene.cycles.samples=16;scene.cycles.use_denoising=True;scene.render.resolution_x=1100;scene.render.resolution_y=850;scene.render.resolution_percentage=100
-notes=bpy.data.texts.new('README | Two R6 power punches');notes.write('Two separate editable actions: R6 | Left torque punch (0.58s) and R6 | Right power cross (0.70s). Both are keyed at 60fps using the original rigid R6 bones and skin. No elbow or knee bones were added. Hips lead the shoulders; head counter-rotates; the off-hand guards. Timeline previews: left at frame 15, right at frame 90. Actions are available in the Action Editor; NLA tracks can be muted to edit them separately. Web controls: Z / X. Dagger is hidden for unarmed previews.\n')
-scene.frame_set(107);bpy.context.view_layer.objects.active=rig;bpy.ops.object.select_all(action='DESELECT');rig.select_set(True);rig.show_in_front=True
+notes=bpy.data.texts.new('README | Two R6 power punches');notes.write('Two separate editable actions: R6 | Left torque punch (1.10s) and R6 | Right power cross (1.30s). Both are keyed at 60fps using the original rigid R6 bones and skin. No elbow or knee bones were added. Hips lead the shoulders; head counter-rotates; the off-hand guards. Timeline previews: left at frame 15, right at frame 90. Actions are available in the Action Editor; NLA tracks can be muted to edit them separately. Web controls: Z / X. Dagger is hidden for unarmed previews.\n')
+scene.frame_set(123);bpy.context.view_layer.objects.active=rig;bpy.ops.object.select_all(action='DESELECT');rig.select_set(True);rig.show_in_front=True
 for screen in bpy.data.screens:
  for area in screen.areas:
   if area.type=='VIEW_3D':area.spaces.active.region_3d.view_perspective='CAMERA'

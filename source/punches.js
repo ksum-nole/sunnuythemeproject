@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 export const PUNCHES = {
-  Left: { label: 'Left punch', duration: .58, impact: .232, power: .78 },
-  Right: { label: 'Right cross', duration: .70, impact: .280, power: 1 }
+  Left: { label: 'Left punch', duration: 1.10, impact: .462, power: .78 },
+  Right: { label: 'Right cross', duration: 1.30, impact: .546, power: 1 }
 };
 
 // Phase, hip yaw, chest yaw, shoulder pitch, guard pitch, forward lean,
@@ -10,12 +10,12 @@ export const PUNCHES = {
 const keys = [
   [0,     0,   0,   0,  0,   0,     0,     0,  0],
   [.13,  -6, -10,  55, 46,   1, -.025, -.035,  0],
-  [.26, -14, -26,  62, 72,   4, -.065, -.095, .05],
-  [.34,  32,  52,  83, 77,  -5,   .31,  -.06, .68],
-  [.40,  54,  88,  90, 83,  -9,   .68,  -.12,  1],
-  [.46,  58,  90,  90, 80, -10,   .76,   -.1,  1],
-  [.59,  25,  36,  82, 75,  -5,   .29,  -.04, .55],
-  [.76,  -3,  -5,  40, 40,   0,     0,     0, .03],
+  [.26, -18, -26,  62, 72,   4, -.065, -.095, .05],
+  [.34,  55,  48,  83, 77,  -4,   .31,  -.06, .68],
+  [.42,  90,  90,  90, 83,  -5,   .76,  -.10,  1],
+  [.60,  90,  90,  90, 83,  -6,   .84,  -.08,  1],
+  [.74,  38,  46,  78, 75,  -4,   .29,  -.04, .55],
+  [.86,  -3,  -5,  40, 40,   0,     0,     0, .03],
   [1,     0,   0,   0,  0,   0,     0,     0,  0]
 ];
 
@@ -61,18 +61,21 @@ export function punchPose(side, seconds, bootBounds, swordBindOffset) {
     const idlePitch = limb === 'Right' ? 9 : 0;
     const pitch = (striking ? v(3) : v(4)) + idlePitch*(1-envelope);
     const shoulderX = s*(striking?1.5:1.05);
-    const shoulder = new THREE.Vector3(shoulderX,0,3.5).applyMatrix4(torso);
+    // At full extension, hinge at the top of the rigid upper arm so the
+    // entire arm reaches forward instead of leaving part behind the shoulder.
+    const shoulderZ = 3.5+(striking?.45*v(8):0);
+    const shoulder = new THREE.Vector3(shoulderX,0,shoulderZ).applyMatrix4(torso);
     const rotation = new THREE.Quaternion().setFromRotationMatrix(torso)
       .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(rad(pitch),0,rad(-s*(striking?5:13)*envelope),'XYZ')));
     const forward = new THREE.Quaternion().setFromEuler(new THREE.Euler(rad(striking?90:128),0,rad(striking?0:-s*18),'XYZ'));
     rotation.slerp(forward,v(8));
     poses[limb+' Arm'] = translate(...shoulder.toArray())
       .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotation))
-      .multiply(translate(-shoulderX,0,-3.5));
-    // Keep the feet planted horizontally while the hips rotate above them.
-    // R6 limbs stay single rigid pieces: there are no invented elbows or knees.
-    poses[limb+' Leg'] = base.clone().multiply(translate(0,(s===-1?.16:-.12)*envelope,0))
-      .multiply(pivot(s*.5,0,2,(s===sign?5:-3)*envelope,0,(s===sign?hip*.7:hip*.18)));
+      .multiply(translate(-shoulderX,0,-shoulderZ));
+    // The complete lower body turns with the pelvis into a staggered blade.
+    // A slight foot counter-turn keeps the lead foot angled toward the strike.
+    poses[limb+' Leg'] = hips.clone().multiply(translate(s*.22*envelope,0,0))
+      .multiply(pivot(s*.5,0,2,(s===sign?5:-3)*envelope,0,-hip*(s===sign?.25:.05)));
   }
   poses.Cape = torso.clone().multiply(pivot(0,-.55,3.8,-v(5)*.28,0,-chest*.15));
   poses.Sword = poses['Right Arm'].clone().multiply(swordBindOffset);

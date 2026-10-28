@@ -10,9 +10,9 @@ const checks=[];
 for(const [side,clip]of Object.entries(PUNCHES)){
  const sign=side==='Right'?1:-1,previous={};let maxAngle=0;
  const hand=phase=>new THREE.Vector3(sign*1.5,0,2.03).applyMatrix4(punchPose(side,phase*clip.duration,c.bootBounds,grip)[side+' Arm']);
- assert(hand(.4).y-hand(.26).y>1.8,'Punch must extend decisively from its chamber');
- assert(Math.abs(hand(.4).x)<.65,'Striking fist should cross toward the center line');
- assert(hand(.4).y>3.5,'Sideways stance must substantially increase reach');
+ assert(hand(.42).y-hand(.26).y>1.8,'Punch must extend decisively from its chamber');
+ assert(Math.abs(hand(.42).x)<.65,'Striking fist should cross toward the center line');
+ assert(hand(.42).y>3.5,'Sideways stance must substantially increase reach');
  const extension=punchPose(side,clip.impact,c.bootBounds,grip);const axis=new THREE.Vector3(0,0,-1).transformDirection(extension[side+' Arm']);assert(axis.dot(new THREE.Vector3(0,1,0))>.999,'Striking arm must be horizontal and point forward at full extension');
  for(let i=0;i<=240;i++){
   const poses=punchPose(side,i/240*clip.duration,c.bootBounds,grip);let low=Infinity;
@@ -24,10 +24,12 @@ for(const [side,clip]of Object.entries(PUNCHES)){
   assert(Math.abs(low)<1e-5,'At least one boot must remain grounded');
  }
  assert(maxAngle<.13,'Punch motion must remain continuous');
- const torso=punchPose(side,clip.duration*.4,c.bootBounds,grip).Torso;const yaw=Math.atan2(torso.elements[1],torso.elements[0]);assert(Math.abs(yaw)>THREE.MathUtils.degToRad(85)&&Math.abs(yaw)<Math.PI/2+.01,'Torso must finish fully sideways without a half spin');
+ const torso=punchPose(side,clip.duration*.42,c.bootBounds,grip).Torso;const yaw=Math.atan2(torso.elements[1],torso.elements[0]);assert(Math.abs(yaw)>THREE.MathUtils.degToRad(85)&&Math.abs(yaw)<Math.PI/2+.01,'Torso must finish fully sideways without a half spin');
+ for(const phase of [.42,.5,.59]){const pose=punchPose(side,phase*clip.duration,c.bootBounds,grip);const r=new THREE.Vector3(.5,0,.21).applyMatrix4(pose['Right Leg']),l=new THREE.Vector3(-.5,0,.21).applyMatrix4(pose['Left Leg']);assert(Math.abs(r.y-l.y)>1.15&&Math.abs(r.x-l.x)<.35,'Feet must form a front/back bladed stance');for(const limb of ['Right','Left']){const m=pose[limb+' Leg'];assert(Math.abs(Math.atan2(m.elements[1],m.elements[0]))>Math.PI/3,'The lower body must turn with the torso');}const arm=new THREE.Vector3(0,0,-1).transformDirection(pose[side+' Arm']);assert(arm.y>.999,'Full extension must remain readable through the contact hold');}
+ assert(clip.duration>=1.1,'The complete punch must play at the requested slower pace');
  const start=punchPose(side,0,c.bootBounds,grip),end=punchPose(side,clip.duration,c.bootBounds,grip);for(const n of Object.keys(start))assert(start[n].elements.every((v,i)=>Math.abs(v-end[n].elements[i])<1e-6));
 }
-checks.push('Both arms extend across the center line with torso torque, rigid limbs, grounded boots, continuous curves, and clean idle endpoints');
+checks.push('Slower punches hold full forward extension while torso, pelvis and staggered feet form a fully bladed stance; limbs remain rigid and curves remain continuous');
 const browser=await chromium.launch({headless:true,executablePath:process.env.GAME_TEST_BROWSER||'/Users/jacobatamas/Library/Caches/ms-playwright/chromium-1194/chrome-mac/Chromium.app/Contents/MacOS/Chromium',args:['--use-gl=angle','--use-angle=metal']});
 try{
  const page=await browser.newPage({viewport:{width:1280,height:800}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
