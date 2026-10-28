@@ -5,9 +5,11 @@ Double-click PLAY MASSIVE ICE SLAM.html on your Desktop. The complete game is em
 in that file; no server or internet connection is required.
 
 CONTROLS
-WASD / arrows: move. Shift: sprint. Space: jump.
+WASD / arrows: auto sprint. Shift: toggle shift lock. Space: jump.
 C: original forward ice burst. V: massive ground ice slam.
-Drag: orbit the camera. Mouse wheel: zoom. R: reset.
+Drag: orbit the camera. In shift lock, move the mouse to look and strafe
+with A/D while facing the camera direction. Escape releases the mouse.
+Mouse wheel: zoom. R: reset.
 
 NEW ANIMATION AND VFX
 Source: Desktop/Place1.rbxl, its saved 221-frame R6 KeyframeSequence.
@@ -25,6 +27,8 @@ Movement and facing stay locked during a cast; cooldown allows recovery.
 
 MOVEMENT
 The run uses Pure_Sprint_Animation.blend at its original sprint cadence.
+Movement always uses full sprint speed. Character turns quickly through the
+shortest angle with a smooth response, including while shift lock is enabled.
 Ground movement starts and stops immediately. Air movement supports direct
 steering. Coyote time and jump buffering each allow 120 ms of forgiveness.
 Solid perimeter walls enclose the arena.

@@ -3,25 +3,44 @@ import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
 import {readFile,writeFile} from 'node:fs/promises';
 import * as THREE from 'three';
-const browser=await chromium.launch({headless:true,executablePath:process.env.GAME_TEST_BROWSER||'/Users/jacobatamas/Library/Caches/ms-playwright/chromium-1194/chrome-mac/Chromium.app/Contents/MacOS/Chromium',args:['--use-gl=angle','--use-angle=metal']});
+import {execFileSync} from 'node:child_process';
+const executablePath=process.env.GAME_TEST_BROWSER||'/Users/jacobatamas/Library/Caches/ms-playwright/chromium-1194/chrome-mac/Chromium.app/Contents/MacOS/Chromium';
+// macOS Chromium needs a focused native window to allow real pointer capture.
+const browser=await chromium.launch({headless:process.platform!=='darwin',executablePath,args:['--use-gl=angle','--use-angle=metal']});
 const page=await browser.newPage({viewport:{width:1440,height:960}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+const cdp=await browser.newBrowserCDPSession();
+const contexts=await cdp.send('Target.getBrowserContexts');
+await cdp.send('Browser.grantPermissions',{permissions:['pointerLock'],browserContextId:contexts.browserContextIds[0]});
+if(process.platform==='darwin')execFileSync('osascript',['-e','tell application '+JSON.stringify(executablePath.split('/Contents/')[0])+' to activate']);
+await page.bringToFront();
 const state=()=>page.evaluate(()=>window.__iceGame.getState());
 const advance=t=>page.evaluate(t=>window.__iceGame.advance(t),t);
-const reset=async(x=-7.5,y=.1,z=16)=>{await page.keyboard.up('w');await page.keyboard.up('a');await page.keyboard.up('d');await page.keyboard.up('Shift');await page.evaluate(p=>window.__iceGame.teleport(...p),[x,y,z]);await page.evaluate(()=>window.__iceGame.view(0,.37,5.4));return advance(.3);};
+const reset=async(x=-7.5,y=.1,z=16)=>{await page.keyboard.up('w');await page.keyboard.up('a');await page.keyboard.up('d');await page.keyboard.up('Shift');if((await state()).shiftLocked)await page.keyboard.press('Shift');await page.evaluate(p=>window.__iceGame.teleport(...p),[x,y,z]);await page.evaluate(()=>window.__iceGame.view(0,.37,5.4));return advance(.3);};
 const checks=[];const report={checks};
 try{
  await page.goto('file://'+resolve('dist/index.html')+'?test=1');await page.waitForFunction(()=>window.__iceGame?.ready);await page.getByRole('button',{name:'Enter foundry'}).click();await advance(.4);
- await page.keyboard.down('w');let a=await advance(1/120);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-5.9)<1e-5);
+ await page.keyboard.down('w');let a=await advance(1/120);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-8.6)<1e-5);
  await page.keyboard.up('w');const stop=(await state()).position;a=await advance(.1);assert(Math.hypot(a.position[0]-stop[0],a.position[2]-stop[2])<1e-5);checks.push('Ground movement starts and stops immediately');
- await page.keyboard.down('w');await page.keyboard.down('d');a=await advance(.08);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-5.9)<1e-5);checks.push('Diagonal movement is normalized');await reset();
- await page.keyboard.down('w');await page.keyboard.down('Shift');a=await advance(.2);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-8.6)<1e-5);assert.equal(a.runAnimation,'Pure_Sprint_Animation.blend');
+ await page.keyboard.down('w');await page.keyboard.down('d');a=await advance(.08);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-8.6)<1e-5);checks.push('Diagonal movement is normalized');await reset();
+ await page.keyboard.down('w');a=await advance(.2);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-8.6)<1e-5);assert.equal(a.runAnimation,'Pure_Sprint_Animation.blend');
  const source=JSON.parse(await readFile('dist/assets/run.json','utf8'));const poses=await page.evaluate(()=>window.__iceGame.inspectPose());const f=a.runAnimationTime*source.fps,index=Math.floor(f),alpha=f-index;
  let rotationError=0;
  for(const name of ['Torso','Head','Right Arm','Left Arm','Right Leg','Left Leg']){
   const bytes=Buffer.from(source.clip[name],'base64');const data=new Float32Array(bytes.buffer,bytes.byteOffset,bytes.byteLength/4);const qa=new THREE.Quaternion().fromArray(data,index*10+3),qb=new THREE.Quaternion().fromArray(data,(index+1)*10+3);qa.slerp(qb,alpha);const actual=new THREE.Quaternion();new THREE.Matrix4().fromArray(poses[name]).decompose(new THREE.Vector3(),actual,new THREE.Vector3());qa.normalize();actual.normalize();rotationError=Math.max(rotationError,qa.angleTo(actual));
  }
  assert(rotationError<.0001);report.maximumRunRotationError=rotationError;await page.screenshot({path:'reviews/movement/pure-sprint.png'});checks.push('Original Pure Sprint bone motion plays at authored sprint cadence');
- await page.keyboard.press('Space');await page.keyboard.up('w');await page.keyboard.up('Shift');await page.keyboard.down('d');a=await advance(1/120);assert(a.velocity[0]>5.89&&Math.abs(a.velocity[2])<1e-5);checks.push('Air vectoring changes direction immediately');await reset();
+ await page.keyboard.press('Space');await page.keyboard.up('w');await page.keyboard.up('Shift');await page.keyboard.down('d');a=await advance(1/120);assert(a.velocity[0]>8.59&&Math.abs(a.velocity[2])<1e-5);checks.push('Air vectoring changes direction immediately');await reset();
+ // Turning changes the body orientation smoothly without delaying movement.
+ const angle=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
+ await page.keyboard.down('d');a=await advance(1/120);assert(a.facing<-.01&&a.facing>-Math.PI/2+.1);assert(a.velocity[0]>8.59);
+ a=await advance(.16);assert(angle(a.facing,-Math.PI/2)<.05);await page.keyboard.up('d');
+ await page.keyboard.down('a');const beforeReverse=a.facing;a=await advance(1/120);assert(angle(a.facing,beforeReverse)<.6&&angle(a.facing,Math.PI/2)>.5);assert(a.velocity[0]<-8.59);
+ await advance(.3);await reset();await page.evaluate(()=>window.__iceGame.view(Math.PI-.05,.37,5.4));await page.keyboard.down('w');await advance(.35);await page.evaluate(()=>window.__iceGame.view(-Math.PI+.05,.37,5.4));const wrapBefore=(await state()).facing;a=await advance(1/120);assert(angle(a.facing,wrapBefore)<.03&&angle(a.facing,-Math.PI+.05)<.1);checks.push('Quick smooth turns and reversals take the shortest path across the angle seam');
+ await reset();await page.keyboard.down('d');const fullStep=(await advance(.12)).facing;await reset();await page.keyboard.down('d');await advance(.06);const halfSteps=(await advance(.06)).facing;assert(angle(fullStep,halfSteps)<1e-6);checks.push('Turn response is independent of simulation frame size');
+ await reset();await page.mouse.move(700,400);await page.keyboard.press('Shift');await page.waitForFunction(()=>document.pointerLockElement===document.getElementById('game'));
+ a=await state();assert(a.shiftLocked&&a.pointerLocked);await page.keyboard.down('d');a=await advance(.12);assert(a.velocity[0]>8.59&&angle(a.facing,0)<.001);await page.keyboard.up('d');const yaw=a.cameraYaw;await page.mouse.move(820,420);a=await advance(.2);assert(Math.abs(a.cameraYaw-yaw)>.2);assert(angle(a.facing,a.cameraYaw)<.04);await page.keyboard.down('Shift');await page.keyboard.down('Shift');assert(!(await state()).shiftLocked);await page.keyboard.up('Shift');await page.keyboard.press('Shift');await page.waitForFunction(()=>document.pointerLockElement===document.getElementById('game'));await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.pointerLockElement);assert(!(await state()).shiftLocked);checks.push('Shift toggles mouse capture and camera-facing strafing; mouse-look follows smoothly; Escape releases it');
+ await reset();
+
  // Walk off the foundry's unrailed centre cover, not through a gallery railing.
  async function leaveLedge(){
   await reset(0,1.58,15.5);const start=await state();assert(start.grounded,'Cover spawn must be grounded');await page.keyboard.down('d');

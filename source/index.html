@@ -6,15 +6,15 @@
 <style>/* APP_STYLE */</style>
 </head>
 <body>
-<canvas id="game" tabindex="0" aria-label="Cinder 07. Use WASD to move, Shift to sprint, Space to jump, C for ice stomp, and V for massive ice slam."></canvas>
+<canvas id="game" tabindex="0" aria-label="Cinder 07. Use WASD to move, Shift to toggle shift lock, Space to jump, C for ice stomp, and V for massive ice slam."></canvas>
 <div id="vignette" aria-hidden="true"></div>
 <header class="topbar"><div class="brand"><span class="brand-mark">07</span><div><span class="eyebrow">CINDER / FOUNDRY</span><span class="brand-sub">ICE SLAM PLAYGROUND</span></div></div><div class="mode"><i></i><span>R6 · FREE ROAM</span><button id="help" aria-label="Show controls">?</button></div></header>
 <div id="reticle" aria-hidden="true"><span></span></div>
 <div id="toast" role="status" aria-live="polite"></div>
-<aside class="controls"><span><kbd>W A S D</kbd> Move</span><span><kbd>SHIFT</kbd> Sprint</span><span><kbd>SPACE</kbd> Jump</span><span><kbd>DRAG</kbd> Look</span><span><kbd>R</kbd> Reset</span></aside>
+<aside class="controls"><span><kbd>W A S D</kbd> Auto sprint</span><button id="shift-lock" type="button" aria-pressed="false" title="Toggle shift lock"><kbd>SHIFT</kbd> Shift lock</button><span><kbd>SPACE</kbd> Jump</span><span><kbd>DRAG</kbd> Look</span><span><kbd>R</kbd> Reset</span></aside>
 <section class="ability-panel" aria-label="Ice slam ability"><div class="ability-copy"><span class="eyebrow">CRYOKINESIS</span><strong id="ability-name">Ice abilities</strong><span id="ability-state">Ready to cast</span></div><button id="cast-c" aria-label="Cast original ice stomp. Keyboard C." title="C · Original ice stomp"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 5v27M7 21l13 12 13-12M7 11l13 10 13-10"/></svg><span>C</span><div id="cooldown-cover-c"></div></button><button id="cast" title="V · Massive ice slam" aria-label="Cast ice slam. Keyboard V."><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4v32M6 12l28 16M6 28l28-16M15 8l5 5 5-5M15 32l5-5 5 5M8 16l7-1-1-7M32 24l-7 1 1 7M8 24l7 1-1 7M32 16l-7-1 1-7"/></svg><span>V</span><div id="cooldown-cover"></div></button><div class="ability-meter"><div id="ability-meter-fill"></div></div></section>
 <div class="corner-note">CINDER 07<span>DEATHMATCH FOUNDRY</span></div>
 <div id="loading" class="overlay"><div class="loading-inner"><span class="eyebrow">CINDER / 07</span><div class="loader"></div><strong>Opening the foundry</strong><span id="loading-note">Preparing the arena and ice animation…</span></div></div>
-<div id="welcome" class="overlay hidden"><section class="welcome-card"><span class="eyebrow">CINDER / 07</span><h1>Cold front.</h1><p>Run the foundry. Plant your feet.<br>Unleash the ice.</p><div class="welcome-controls"><div><kbd>W A S D</kbd><span>MOVE</span></div><div><kbd>SHIFT</kbd><span>SPRINT</span></div><div><kbd>C</kbd><span>ICE STOMP</span></div><div><kbd>V</kbd><span>MASSIVE SLAM</span></div></div><button id="start">Enter foundry <span>↗</span></button><small>Drag to look · Scroll to zoom · Space to jump · R to reset</small></section></div>
+<div id="welcome" class="overlay hidden"><section class="welcome-card"><span class="eyebrow">CINDER / 07</span><h1>Cold front.</h1><p>Run the foundry. Plant your feet.<br>Unleash the ice.</p><div class="welcome-controls"><div><kbd>W A S D</kbd><span>MOVE</span></div><div><kbd>SHIFT</kbd><span>SHIFT LOCK</span></div><div><kbd>C</kbd><span>ICE STOMP</span></div><div><kbd>V</kbd><span>MASSIVE SLAM</span></div></div><button id="start">Enter foundry <span>↗</span></button><small>Drag to look · Shift locks mouse · Esc releases it<br>Scroll to zoom · Space to jump · R to reset</small></section></div>
 <script>/* APP_CODE */</script>
 </body></html>
