@@ -18,7 +18,7 @@ const advance=t=>page.evaluate(t=>window.__iceGame.advance(t),t);
 const reset=async(x=-7.5,y=.1,z=16)=>{await page.keyboard.up('w');await page.keyboard.up('a');await page.keyboard.up('d');await page.keyboard.up('Shift');if((await state()).shiftLocked)await page.keyboard.press('Shift');await page.evaluate(p=>window.__iceGame.teleport(...p),[x,y,z]);await page.evaluate(()=>window.__iceGame.view(0,.37,5.4));return advance(.3);};
 const checks=[];const report={checks};
 try{
- await page.goto('file://'+resolve('dist/index.html')+'?test=1');await page.waitForFunction(()=>window.__iceGame?.ready);await page.getByRole('button',{name:'Enter arena'}).click();await advance(.4);
+ await page.goto('file://'+resolve('dist/index.html')+'?test=1');await page.waitForFunction(()=>window.__iceGame?.ready);await page.getByRole('button',{name:'Enter arena'}).click();await page.evaluate(()=>window.__iceGame.setTargetLock(false));await advance(.4);
  await page.keyboard.down('w');let a=await advance(1/120);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-8.6)<1e-5);
  await page.keyboard.up('w');const stop=(await state()).position;a=await advance(.1);assert(Math.hypot(a.position[0]-stop[0],a.position[2]-stop[2])<1e-5);checks.push('Ground movement starts and stops immediately');
  await page.keyboard.down('w');await page.keyboard.down('d');a=await advance(.08);assert(Math.abs(Math.hypot(a.velocity[0],a.velocity[2])-8.6)<1e-5);checks.push('Diagonal movement is normalized');await reset();

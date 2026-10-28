@@ -1,62 +1,70 @@
-CINDER 07 — OPEN TRAINING ARENA
+CINDER 07 — ICE COMBAT TRAINING
 
 PLAY
-Open https://sunnuythemeproject.vercel.app or double-click
-PLAY MASSIVE ICE SLAM.html on the Desktop. The Desktop copy is standalone.
+https://sunnuythemeproject.vercel.app
+Desktop: PLAY MASSIVE ICE SLAM.html (standalone, no server required).
 
 CONTROLS
-WASD / arrows: auto sprint. Space: jump. Shift: toggle shift lock.
-Left-click: four-hit punch combo, right / left / right / left.
-Right mouse + drag: orbit. In shift lock, move the mouse freely to look.
-Mouse wheel: zoom. Escape: release the mouse. R: reset the arena spawn.
-C: forward ice stomp. V: massive ground-punch ice slam.
+WASD / arrows: auto sprint and strafe. Space: jump.
+Q: forward dash with a leaning R6 animation (1.25s cooldown).
+Left-click: right / left / right / left punch combo. Every punch steps forward.
+The camera locks onto the training dummy. Right-drag adjusts the view around
+it. Shift captures the mouse; Escape releases it. Wheel: zoom. R: reset.
+C: forward ice stomp (5s cooldown). V: massive ground slam (10s cooldown).
 Z / X remain individual punch shortcuts and share the punch recovery gate.
 
+DUMMY, DASH AND FINISHER
+The dummy has 100 health. A punch deals 25 damage on a connected hit;
+misses do not hurt it. Punches advance up to 0.7 world units and stop against
+the dummy or a wall. Q moves up to 5.5 units in 0.28s using swept collision.
+C deals 25 damage in its forward range. V deals 50 inside the ice field.
+
+A lethal punch starts a five-second finisher using the earlier hand-clash
+scene from Roblox_Hand_Clash_ThreeJS. Its 16 authored R6 poses are retargeted
+to the ice character and dummy, smoothly interpolated, and keep both moving
+hand contacts. The same neutral wind effects play at clash and recoil.
+The ice character breaks the struggle, releases an ice blast, and freezes
+the victim inside a crystal shell. The statue remains for eight seconds,
+then the dummy respawns. R can reset the target and cinematic at any time.
+No blood, dragon, reference-video playback or background lettering is used.
+
 COMBO AND COOLDOWNS
-Each left-click requests one punch. Up to four clicks are buffered, so quick
-clicks continue the sequence without being dropped. Holding the mouse does
-not auto-attack. A finished four-hit combo has a 0.7-second cooldown.
-After an unfinished combo, a one-second pause resets the next hit to right.
-Individual Z / X punches have the same 0.7-second recovery and cannot bypass
-combo cooldown. Reset clears queued punches and cooldowns.
+Each click requests one hit. Four quick clicks are buffered; holding the
+mouse does not auto-attack. A completed combo has a 0.7-second cooldown.
+A one-second pause after an unfinished combo resets its next hit to right.
+Z / X individual punches use the same 0.7-second recovery gate.
+C and V cooldowns count from activation and are independent. Attacks, dash
+and the finishing scene do not overlap. Reset clears all queued actions.
 
-C cooldown: 5 seconds from activation.
-V cooldown: 10 seconds from activation.
-The ice abilities have independent cooldowns and share the animation lock.
-On-screen indicators show the combo step, next hand, and remaining cooldowns.
+MAP AND MOVEMENT
+A clear 112-by-112-unit training area has four solid walls and no fixed
+obstacles on the playable floor. The original foundry assets are retained.
+Movement uses Pure_Sprint_Animation.blend, immediate speed changes, air
+steering, 120ms coyote time and jump buffering, and smooth quick turns.
+The left punch lasts 0.60s and the right cross 0.75s, with a full 90-degree
+body turn and full arm extension. Seven ice crystals follow each hand bone.
+The ice abilities retain manual zoom; only the finisher uses a cinematic view.
 
-OPEN MAP
-A clear 112-by-112 world-unit training area replaces the foundry structures
-for now. Four solid walls enclose the floor. All decorative details sit at
-the perimeter. The old foundry source assets remain in dist/assets.
-
-MOVEMENT AND PUNCHES
-The run uses Pure_Sprint_Animation.blend at the original sprint cadence.
-Movement starts and stops immediately, with camera-relative air steering,
-120ms coyote time and jump buffering, and fast smooth character turns.
-Left punch: 0.60s. Right cross: 0.75s. Torso, hips, feet and cape complete a
-full 90-degree turn. The striking arm stays straight at full extension.
-Seven faceted ice crystals follow each original fist bone through every move.
-
-ICE AND BLENDER
-V uses the Place1.rbxl animation with a readable 2.0-second startup and the
-original three-frame downstrike. A grounded 85.6-stud ice circle is surrounded
-by 160 spikes. Camera zoom stays under manual control during both abilities.
-Desktop/Ice_Slam_CE1_Ground_Ring.blend contains the editable V animation/VFX.
-Desktop/R6 Power Punches/R6_Power_Punches.blend contains the two punch actions.
-
-DEVELOPMENT
+SOURCE AND VALIDATION
 npm ci
 npm run build
 npm test
-node source/test-punches.mjs
-node source/test-movement.mjs
-Set GAME_TEST_BROWSER to a Chromium executable when necessary.
+npm run test:combat
+npm run test:punches
+npm run test:movement
+Set GAME_TEST_BROWSER to a Chromium executable if necessary.
 
-source/game.js: gameplay, combo input, cooldowns, camera and collision.
-source/open-arena.js: open arena and perimeter collision.
-source/punches.js: both punch animations.
-source/ice-fists.js: bone-attached crystal fist meshes.
-source/build.mjs: standalone browser build; updates local Desktop play files.
-The JSON files in dist/assets are required build inputs. vercel.json builds
-the static dist/ site; Vercel builds skip local Desktop-file copies.
+source/game.js: controls, collision, target camera, damage and combat state.
+source/training-dummy.js: R6 target, health, recoil and ice shell.
+source/combat-poses.js: rigid R6 dash and finishing poses.
+source/finisher.js: hand-clash retargeting, cinematic and freezing ice blast.
+source/finisher-motion.json: the previously authored hand-clash pose data.
+source/hand-clash-vfx.js: neutral clash/recoil wind effects from that scene.
+source/punches.js and source/ice-fists.js: punches and hand-mounted crystals.
+source/open-arena.js: the open map and perimeter collision.
+source/build.mjs embeds the source and dist/assets JSON into standalone HTML.
+Local builds update Desktop play files. Vercel builds the static dist/ site.
+
+BLENDER FILES
+Desktop/R6 Power Punches/R6_Power_Punches.blend: both editable punch actions.
+Desktop/Ice_Slam_CE1_Ground_Ring.blend: editable V animation and ice VFX.

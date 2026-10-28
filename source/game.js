@@ -5,6 +5,9 @@ import { ICE, CHARACTER, RUN, LEGACY_ICE, LEGACY_MOTION } from './generated-asse
 import { PUNCHES, punchPose } from './punches.js';
 import { attachIceFists, FIST_ANCHORS } from './ice-fists.js';
 import { createOpenArena } from './open-arena.js';
+import {createTrainingDummy} from './training-dummy.js';
+import {createFinisher} from './finisher.js';
+import {dashPose,blendPoses} from './combat-poses.js';
 
 const $ = id => document.getElementById(id);
 const TEST = new URLSearchParams(location.search).has('test');
@@ -20,6 +23,7 @@ const ABILITIES = {
 const PUNCH_SEQUENCE=['Right','Left','Right','Left'],PUNCH_COOLDOWN=.7,COMBO_WINDOW=1;
 const COYOTE_TIME = 0.12, JUMP_BUFFER = 0.12;
 const MOVE_SPEED = 8.6, TURN_RESPONSE = 22;
+const DASH_DURATION=.28,DASH_DISTANCE=5.5,DASH_COOLDOWN=1.25,PUNCH_STEP=.7,DUMMY_DISTANCE=1.45;
 const UP = new THREE.Vector3(0, 1, 0);
 const Z_UP = new THREE.Vector3(0, 0, 1);
 const TAU = Math.PI * 2;
@@ -71,17 +75,21 @@ const arena=createOpenArena();
 scene.add(arena.group);
 const world=new Octree().fromGraphNode(arena.collisionRoot);
 const spawn=arena.spawn;
+const dummy=createTrainingDummy(scene,SCALE,spawn.clone().add(new THREE.Vector3(0,-.1,-7.5)));
 const velocity = new THREE.Vector3();
 const capsule = new Capsule(new THREE.Vector3(0, 0.38, 0), new THREE.Vector3(0, 1.6, 0), 0.38);
 const groundProbe = new Capsule();
 let grounded = false, started = false, paused = false;
 let cameraYaw = 0, cameraPitch = 0.37, cameraDistance = 5.4;
 let shiftLocked = false, dragging = false, pointerWasLocked = false;
+let targetLocked=true,lockOrbitYaw=0;
 let facing = 0, runPhase = 0, runTime = 0, simTime = 0;
 let castTime = -1, fxTime = -1, casts = 0, castKey = 'V', fxKey = 'V';
 let punchTime = -1, punchSide = 'Left', punchStartPose = null;
 const punchesThrown = { Left: 0, Right: 0 };
 let comboStep=0,comboQueued=0,comboExpiresAt=-Infinity,punchCooldown=0,punchInCombo=false;
+let dashTime=-1,dashCooldown=0,dashStartPose=null,punchHitResolved=false,finishers=0,landedPunches=0;
+const punchDirection=new THREE.Vector3(),dashDirection=new THREE.Vector3();
 const cooldowns = { C: 0, V: 0 };
 let lastGroundedAt = -Infinity, coyoteAvailable = false, jumpBufferedUntil = -Infinity, jumps = 0;
 let shake = 0, impactFired = false, jumping = false;
@@ -128,6 +136,7 @@ const boneData = Object.fromEntries(Object.entries(CHARACTER.clip).map(([n, data
 const legacyBoneData = Object.fromEntries(Object.entries(LEGACY_MOTION.clip).map(([n,data])=>[n,floats(data)]));
 const runBoneData = Object.fromEntries(Object.entries(RUN.clip).map(([n,data])=>[n,floats(data)]));
 const swordBindOffset = new THREE.Matrix4().fromArray(CHARACTER.idle['Right Arm']).invert().multiply(new THREE.Matrix4().fromArray(CHARACTER.idle.Sword));
+const finisher=createFinisher({scene,dummy,characterData:CHARACTER,swordBindOffset,scale:SCALE});
 const desiredBoneMatrices = {};
 function updateImportedRig() {
   for (const info of CHARACTER.bones) desiredBoneMatrices[info.name] = poseMatrices[info.name].clone().multiply(restMatrices[info.name]);
@@ -241,7 +250,12 @@ function proceduralPose(dt) {
   updateImportedRig();
 }
 function animateCharacter(dt) {
-  skinMeshes.get('Icedagger | Cyan ice and frosted edge').visible = punchTime < 0;
+  skinMeshes.get('Icedagger | Cyan ice and frosted edge').visible = punchTime < 0 && dashTime<0 && !finisher.active;
+  if(dashTime>=0){
+    let poses=dashPose(dashTime,DASH_DURATION,CHARACTER.bootBounds,swordBindOffset);
+    if(dashStartPose)poses=blendPoses(dashStartPose,poses,THREE.MathUtils.smoothstep(dashTime,0,.045));
+    for(const[n,m]of Object.entries(poses))poseMatrices[n].copy(m);updateImportedRig();return;
+  }
   if (punchTime >= 0) {
     const poses = punchPose(punchSide,punchTime,CHARACTER.bootBounds,swordBindOffset);
     const blend = THREE.MathUtils.smoothstep(punchTime,0,.055);
@@ -299,6 +313,7 @@ function teleportTo(location = spawn) {
   castTime = -1; fxTime = -1; cooldowns.C = cooldowns.V = 0; castKey = fxKey = 'V'; fx.visible = false; facing = 0; impactFired = false;
   punchTime = -1; punchStartPose = null;
   comboStep=comboQueued=0;comboExpiresAt=-Infinity;punchCooldown=0;punchInCombo=false;
+  dashTime=-1;dashCooldown=0;dashStartPose=null;punchHitResolved=false;finisher.reset();dummy.reset();
   lastGroundedAt = -Infinity; coyoteAvailable = false; jumpBufferedUntil = -Infinity; runTime = 0;
   actor.position.copy(location); actor.rotation.y = 0;
 }
@@ -307,7 +322,7 @@ let toastExpiry = 0;
 function toast(text) { $('toast').textContent = text; $('toast').classList.add('visible'); toastExpiry = simTime + 1.8; }
 function castIce(key='V') {
   const ability=ABILITIES[key];
-  if (!started || paused || castTime >= 0 || punchTime >= 0 || cooldowns[key] > 0) return false;
+  if (!started || paused || finisher.active || dashTime>=0 || castTime >= 0 || punchTime >= 0 || cooldowns[key] > 0) return false;
   if (!grounded) { toast('Land before using Ice slam'); return false; }
   comboStep=comboQueued=0;comboExpiresAt=-Infinity;
   castKey=fxKey=key;castTime = 0; fxTime = 0; cooldowns[key] = ability.cooldown; velocity.set(0, 0, 0);jumpBufferedUntil=-Infinity;coyoteAvailable=false;
@@ -318,11 +333,13 @@ function castIce(key='V') {
   return true;
 }
 function punch(side,inCombo=false) {
-  if (!started || paused || castTime >= 0 || punchTime >= 0 || punchCooldown>0 || !grounded) return false;
+  if (!started || paused || finisher.active || dashTime>=0 || castTime >= 0 || punchTime >= 0 || punchCooldown>0 || !grounded) return false;
   if(!inCombo){comboStep=comboQueued=0;comboExpiresAt=-Infinity;}
   punchInCombo=inCombo;
   punchStartPose = Object.fromEntries(Object.entries(poseMatrices).map(([name,m])=>[name,m.clone()]));
   punchSide = side; punchTime = 0; punchesThrown[side]++;
+  punchHitResolved=false;punchDirection.set(-Math.sin(facing),0,-Math.cos(facing));
+  if(targetLocked)punchDirection.copy(dummy.position).sub(groundPosition()).setY(0).normalize();
   velocity.set(0,0,0);jumpBufferedUntil=-Infinity;coyoteAvailable=false;
   canvas.focus({preventScroll:true});return true;
 }
@@ -332,7 +349,7 @@ function nextComboHit() {
   comboStep++;return true;
 }
 function comboPunch() {
-  if(!started||paused||!grounded||castTime>=0||punchCooldown>0)return false;
+  if(!started||paused||finisher.active||dashTime>=0||!grounded||castTime>=0||punchCooldown>0)return false;
   if(punchTime>=0){
     if(!punchInCombo||comboStep+comboQueued>=PUNCH_SEQUENCE.length)return false;
     comboQueued++;return true;
@@ -348,19 +365,77 @@ function finishPunch() {
     punchCooldown=PUNCH_COOLDOWN;comboStep=comboQueued=0;comboExpiresAt=-Infinity;
   }else comboExpiresAt=simTime+COMBO_WINDOW;
 }
+function collideDummy(){
+  const p=groundPosition(),away=p.clone().sub(dummy.position).setY(0),distance=away.length();
+  if(p.y>2.3||distance>=DUMMY_DISTANCE)return;
+  if(distance<.0001)away.set(0,0,1);else away.divideScalar(distance);
+  capsule.translate(away.clone().multiplyScalar(DUMMY_DISTANCE-distance));
+  const into=velocity.dot(away);if(into<0)velocity.addScaledVector(away,-into);
+}
+function combatMove(distance,direction){
+  const steps=Math.max(1,Math.ceil(distance/.08)),step=direction.clone().multiplyScalar(distance/steps);
+  for(let i=0;i<steps;i++){
+    capsule.translate(step);
+    for(let j=0;j<4;j++){const hit=world.capsuleIntersect(capsule);if(!hit)break;capsule.translate(hit.normal.multiplyScalar(hit.depth+.00005));}
+    collideDummy();
+  }
+}
+function dash(){
+  if(!started||paused||finisher.active||dashTime>=0||dashCooldown>0||castTime>=0||punchTime>=0||!grounded)return false;
+  dashTime=0;dashCooldown=DASH_COOLDOWN;dashStartPose=Object.fromEntries(Object.entries(poseMatrices).map(([n,m])=>[n,m.clone()]));
+  dashDirection.set(-Math.sin(facing),0,-Math.cos(facing));if(targetLocked)dashDirection.copy(dummy.position).sub(groundPosition()).setY(0).normalize();
+  comboStep=comboQueued=0;velocity.set(0,0,0);jumpBufferedUntil=-Infinity;return true;
+}
+function startFinisher(){
+  finishers++;finisher.start(groundPosition(),facing,poseMatrices);punchTime=-1;punchStartPose=null;comboStep=comboQueued=0;comboExpiresAt=-Infinity;punchInCombo=false;dashTime=-1;velocity.set(0,0,0);jumpBufferedUntil=-Infinity;fxTime=-1;fx.visible=false;frostLight.intensity=0;shake=0;
+}
+function checkPunchHit(){
+  if(punchTime<0||punchHitResolved||punchTime<PUNCHES[punchSide].impact)return;
+  punchHitResolved=true;if(dummy.state!=='alive')return;
+  character.updateWorldMatrix(true,true);
+  const sign=punchSide==='Right'?1:-1;
+  const fist=new THREE.Vector3(sign*1.5,.02,.97).applyMatrix4(poseMatrices[punchSide+' Arm']).applyMatrix4(character.matrixWorld);
+  const chest=dummy.position.clone().add(new THREE.Vector3(0,1.22,0)),toTarget=dummy.position.clone().sub(actor.position).setY(0);
+  if(toTarget.length()>2.8||toTarget.normalize().dot(punchDirection)<.5||fist.distanceTo(chest)>1.25)return;
+  landedPunches++;const lethal=dummy.hit(25);if(lethal){startFinisher();return;}
+  dummy.position.addScaledVector(punchDirection,.14);
+}
+function checkIceHit(key){
+  if(dummy.state!=='alive')return;
+  const delta=dummy.position.clone().sub(groundPosition()).setY(0),distance=delta.length();
+  const forward=new THREE.Vector3(-Math.sin(facing),0,-Math.cos(facing));
+  if(key==='V'?distance>ICE.groundCircleRadius*SCALE:distance>6||delta.normalize().dot(forward)<.35)return;
+  if(dummy.hit(key==='V'?50:25)){dummy.state='frozen';dummy.setFreeze(1);dummy.respawnAt=simTime+8;}
+}
 const desired = new THREE.Vector3(), delta = new THREE.Vector3();
 function simulate(dt) {
   if (!started || paused) return;
   simTime += dt; for(const key of ['C','V'])cooldowns[key]=Math.max(0,cooldowns[key]-dt);
   punchCooldown=Math.max(0,punchCooldown-dt);
+  dashCooldown=Math.max(0,dashCooldown-dt);
+  if(finisher.active){
+    const result=finisher.update(dt);actor.position.copy(result.position);actor.rotation.y=result.yaw;
+    for(const[n,m]of Object.entries(result.poses))poseMatrices[n].copy(m);updateImportedRig();skinMeshes.get('Icedagger | Cyan ice and frosted edge').visible=false;
+    if(result.done){
+      const offset=result.exitPosition.clone().sub(groundPosition());capsule.translate(offset);facing=result.exitFacing;velocity.set(0,0,0);grounded=true;dummy.state='frozen';dummy.respawnAt=simTime+8;finisher.active=false;finisher.phase='complete';punchCooldown=PUNCH_COOLDOWN;actor.position.copy(result.exitPosition);actor.rotation.y=facing;finishCameraBlend=.65;cameraInitialized=false;animateCharacter(0);
+    }
+    updateHUD();return;
+  }
+  dummy.update(dt,simTime);
+  if(dummy.state==='alive'){const target=Math.atan2(dummy.position.x-actor.position.x,dummy.position.z-actor.position.z);dummy.root.rotation.y+=Math.atan2(Math.sin(target-dummy.root.rotation.y),Math.cos(target-dummy.root.rotation.y))*(1-Math.exp(-16*dt));}
   if(punchTime<0&&comboStep>0&&simTime>comboExpiresAt){comboStep=comboQueued=0;}
   if (castTime >= 0) {
     castTime += dt;
     velocity.set(0, 0, 0);
-    if (!impactFired && castTime >= ABILITIES[castKey].impact) { shake = 0.105; impactFired = true; }
+    if (!impactFired && castTime >= ABILITIES[castKey].impact) { shake = 0.105; impactFired = true;checkIceHit(castKey); }
     if (castTime >= ABILITIES[castKey].duration) castTime = -1;
+  } else if(dashTime>=0){
+    const before=dashTime;dashTime+=dt;const progress=t=>THREE.MathUtils.smoothstep(t,0,DASH_DURATION);
+    combatMove(DASH_DISTANCE*(progress(Math.min(dashTime,DASH_DURATION))-progress(before)),dashDirection);velocity.set(0,0,0);
+    if(dashTime>=DASH_DURATION){dashTime=-1;dashStartPose=null;}
   } else if (punchTime >= 0) {
-    punchTime += dt; velocity.set(0,0,0);
+    const before=punchTime;const duration=PUNCHES[punchSide].duration;punchTime += dt;velocity.set(0,0,0);
+    const progress=t=>THREE.MathUtils.smoothstep(t/duration,.12,.5);combatMove(PUNCH_STEP*(progress(punchTime)-progress(before)),punchDirection);
     if (punchTime >= PUNCHES[punchSide].duration) {
       // Capture the outgoing recovery before blending into a buffered hit.
       animateCharacter(0);finishPunch();
@@ -386,6 +461,7 @@ function simulate(dt) {
       if (into < 0) velocity.addScaledVector(collision.normal, -into);
       capsule.translate(collision.normal.multiplyScalar(collision.depth + 0.00005));
     }
+    collideDummy();
     // Keep shallow floor seams and ramp crests from toggling ground contact.
     if(!grounded&&velocity.y<=0){
       groundProbe.copy(capsule);groundProbe.translate(new THREE.Vector3(0,-.075,0));
@@ -397,8 +473,8 @@ function simulate(dt) {
     }
     if (grounded && velocity.y < 0.1) velocity.y = 0;
     if(grounded){lastGroundedAt=simTime;coyoteAvailable=true;consumeJump();}
-    if (shiftLocked || desired.lengthSq() > 0.1) {
-      const target = shiftLocked ? cameraYaw : Math.atan2(-desired.x, -desired.z);
+    if (targetLocked || shiftLocked || desired.lengthSq() > 0.1) {
+      const target = targetLocked?Math.atan2(actor.position.x-dummy.position.x,actor.position.z-dummy.position.z):shiftLocked ? cameraYaw : Math.atan2(-desired.x, -desired.z);
       const turn = Math.atan2(Math.sin(target - facing), Math.cos(target - facing));
       facing += turn * (1 - Math.exp(-TURN_RESPONSE * dt));
       facing = Math.atan2(Math.sin(facing), Math.cos(facing));
@@ -408,23 +484,25 @@ function simulate(dt) {
   actor.position.copy(groundPosition()); actor.rotation.y = facing;
   if (actor.position.y < -5 || Math.abs(actor.position.x) > arena.halfSize+5 || Math.abs(actor.position.z) > arena.halfSize+5) { teleportTo(); toast('Back at arena spawn'); }
   shake *= Math.exp(-17 * dt);
-  animateCharacter(dt); animateEffects(); updateHUD();
+  animateCharacter(dt); animateEffects();checkPunchHit(); updateHUD();
 }
 function consumeJump(){
-  if(castTime>=0||punchTime>=0||jumpBufferedUntil<simTime)return;
+  if(finisher.active||dashTime>=0||castTime>=0||punchTime>=0||jumpBufferedUntil<simTime)return;
   if(grounded||(coyoteAvailable&&simTime-lastGroundedAt<=COYOTE_TIME)){
     velocity.y=8.2;grounded=false;jumping=true;coyoteAvailable=false;lastGroundedAt=-Infinity;jumpBufferedUntil=-Infinity;jumps++;
   }
 }
 function jump() {
-  if(started&&!paused&&castTime<0&&punchTime<0){jumpBufferedUntil=simTime+JUMP_BUFFER;consumeJump();}
+  if(started&&!paused&&!finisher.active&&dashTime<0&&castTime<0&&punchTime<0){jumpBufferedUntil=simTime+JUMP_BUFFER;consumeJump();}
 }
-const cameraTarget = new THREE.Vector3(), cameraPos = new THREE.Vector3(), ray = new THREE.Ray();
-let cameraInitialized = false;
+const cameraTarget = new THREE.Vector3(), cameraPos = new THREE.Vector3(), ray = new THREE.Ray(),lockLook=new THREE.Vector3();
+let cameraInitialized = false,finishCameraBlend=0;
 function updateCamera(dt) {
+  if(finisher.active&&finisher.result){const shot=finisher.result;camera.position.lerp(shot.cameraPosition,1-Math.exp(-10*Math.max(dt,.0001)));camera.lookAt(shot.cameraTarget);lockLook.copy(shot.cameraTarget);return;}
   const target = actor.position.clone().add(new THREE.Vector3(0, 1.6, 0));
-  if (shiftLocked) target.add(new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).multiplyScalar(.65));
-  if (!cameraInitialized) { cameraTarget.copy(target); cameraInitialized = true; }
+  if(targetLocked){const yaw=Math.atan2(actor.position.x-dummy.position.x,actor.position.z-dummy.position.z)+lockOrbitYaw;cameraYaw+=Math.atan2(Math.sin(yaw-cameraYaw),Math.cos(yaw-cameraYaw))*(1-Math.exp(-10*Math.max(dt,.0001)));}
+  if (shiftLocked||targetLocked) target.add(new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).multiplyScalar(targetLocked?1.55:.65));
+  if (!cameraInitialized) { cameraTarget.copy(target);lockLook.copy(dummy.position).add(new THREE.Vector3(0,1.22,0)); cameraInitialized = true; }
   cameraTarget.lerp(target, 1 - Math.exp(-16 * Math.max(dt, 0.0001)));
   const horizontal = Math.cos(cameraPitch) * cameraDistance;
   const offset = new THREE.Vector3(Math.sin(cameraYaw) * horizontal, Math.sin(cameraPitch) * cameraDistance, Math.cos(cameraYaw) * horizontal);
@@ -434,15 +512,21 @@ function updateCamera(dt) {
   if (hit && hit.distance < distance) distance = Math.max(.6,hit.distance-.2);
   cameraPos.copy(cameraTarget).addScaledVector(offset.normalize(), distance);
   if (shake > 0.001) cameraPos.add(new THREE.Vector3(Math.sin(simTime * 111), Math.cos(simTime * 137), Math.sin(simTime * 97)).multiplyScalar(shake));
-  camera.position.copy(cameraPos); camera.lookAt(cameraTarget);
+  if(finishCameraBlend>0){camera.position.lerp(cameraPos,1-Math.exp(-10*Math.max(dt,.0001)));finishCameraBlend=Math.max(0,finishCameraBlend-dt);}else camera.position.copy(cameraPos);
+  if(targetLocked){lockLook.copy(dummy.position).add(new THREE.Vector3(0,1.22,0));camera.lookAt(lockLook);}else camera.lookAt(cameraTarget);
 }
 function updateHUD() {
   const casting = castTime >= 0, punching = punchTime >= 0;
-  $('combo-status').textContent=punchCooldown>0?`PUNCH COMBO · ${punchCooldown.toFixed(1)}s`:punchInCombo?`PUNCH COMBO · ${comboStep} / 4`:comboStep>0?`COMBO · ${comboStep} / 4 · CLICK FOR ${PUNCH_SEQUENCE[comboStep].toUpperCase()}`:'CLICK · R → L → R → L';
+  $('target-health').textContent=dummy.state==='alive'?`${dummy.health} / ${dummy.maxHealth}`:dummy.state==='frozen'?'FROZEN':'FINISHER';
+  $('target-health-fill').style.transform=`scaleX(${dummy.health/dummy.maxHealth})`;
+  $('target-state').textContent=dummy.state==='frozen'&&Number.isFinite(dummy.respawnAt)?`RESPAWN ${Math.max(0,Math.ceil(dummy.respawnAt-simTime))}s`:'TARGET LOCKED';
+  $('combo-status').textContent=finisher.active?`FINISHER · ${finisher.phase.toUpperCase()}`:punchCooldown>0?`PUNCH COMBO · ${punchCooldown.toFixed(1)}s`:punchInCombo?`PUNCH COMBO · ${comboStep} / 4`:comboStep>0?`COMBO · ${comboStep} / 4 · CLICK FOR ${PUNCH_SEQUENCE[comboStep].toUpperCase()}`:'CLICK · R → L → R → L';
   $('combo-status').classList.toggle('cooling',punchCooldown>0);
-  $('ability-state').textContent = punching ? PUNCHES[punchSide].label : casting ? `${ABILITIES[castKey].label} · ${castTime<ABILITIES[castKey].impact?'Wind-up':'Recovery'}` : 'C · Ice stomp / V · Massive slam';
+  $('ability-state').textContent = finisher.active?'Ice finisher':dashTime>=0?'Forward dash':punching ? PUNCHES[punchSide].label : casting ? `${ABILITIES[castKey].label} · ${castTime<ABILITIES[castKey].impact?'Wind-up':'Recovery'}` : 'C · Ice stomp / V · Massive slam';
+  $('dash-button').setAttribute('aria-disabled',String(finisher.active||dashTime>=0||dashCooldown>0||casting||punching));
+  $('dash-cooldown-time').textContent=dashCooldown>0?`${dashCooldown.toFixed(1)}s`:'';
   for(const key of ['C','V']){
-    $(key==='V'?'cast':'cast-c').setAttribute('aria-disabled',String(casting||punching||cooldowns[key]>0));
+    $(key==='V'?'cast':'cast-c').setAttribute('aria-disabled',String(finisher.active||dashTime>=0||casting||punching||cooldowns[key]>0));
     $(key==='V'?'cooldown-cover':'cooldown-cover-c').style.transform=`scaleY(${cooldowns[key]/ABILITIES[key].cooldown})`;
     $(key==='V'?'cooldown-time':'cooldown-time-c').textContent=cooldowns[key]>0?`${Math.ceil(cooldowns[key])}s`:'';
   }
@@ -456,6 +540,7 @@ function start() {
 $('start').addEventListener('click', start);
 $('cast').addEventListener('click', ()=>castIce('V'));
 $('cast-c').addEventListener('click',()=>castIce('C'));
+$('dash-button').addEventListener('click',dash);
 function captureMouse() {
   try {
     const request = canvas.requestPointerLock?.();
@@ -479,6 +564,7 @@ window.addEventListener('keydown', e => {
     if (e.code === 'KeyC') castIce('C');
     if (e.code === 'KeyZ') punch('Left');
     if (e.code === 'KeyX') punch('Right');
+    if (e.code === 'KeyQ') dash();
     if (e.code === 'Space') jump();
     if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && started && !paused) setShiftLock(!shiftLocked);
     if (e.code === 'Escape' && shiftLocked) setShiftLock(false);
@@ -503,8 +589,8 @@ canvas.addEventListener('pointerdown', e => {
 canvas.addEventListener('pointerup', e => { if(e.button!==2)return;dragging = false; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); });
 canvas.addEventListener('pointercancel', () => dragging = false);
 document.addEventListener('mousemove', e => {
-  if (!started || paused || !(dragging || document.pointerLockElement === canvas || (shiftLocked && e.target === canvas))) return;
-  cameraYaw -= e.movementX * 0.006;
+  if (finisher.active || !started || paused || !(dragging || document.pointerLockElement === canvas || (shiftLocked && e.target === canvas))) return;
+  if(targetLocked)lockOrbitYaw=THREE.MathUtils.clamp(lockOrbitYaw-e.movementX*.004,-.65,.65);else cameraYaw -= e.movementX * 0.006;
   cameraPitch = THREE.MathUtils.clamp(cameraPitch + e.movementY * 0.004, -0.1, 1.15);
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -525,10 +611,12 @@ proceduralPose(0); actor.position.copy(spawn); updateCamera(1); renderer.render(
 $('loading').classList.add('hidden'); $('welcome').classList.remove('hidden');
 window.__iceGame = {
   ready: true,
-  getState() { return { position: actor.position.toArray(), facing, grounded, locked: castTime >= 0 || punchTime >= 0, activePunch:punchTime>=0?punchSide:null, punchTime, comboStep,comboQueued,punchCooldown,punchInCombo,comboWindow:COMBO_WINDOW,comboCooldownDuration:PUNCH_COOLDOWN, cooldownDurations:{C:ABILITIES.C.cooldown,V:ABILITIES.V.cooldown}, punchesThrown:{...punchesThrown}, punchDuration:PUNCHES[punchSide].duration, punchImpact:PUNCHES[punchSide].impact, animationTime: castTime, cooldown: cooldowns[castKey], cooldowns: {...cooldowns}, activeAbility: castTime>=0?castKey:null, fxAbility:fxKey, casts, activeIceMeshes: fx.userData.activeMeshes || 0, fxVisible: fx.visible, mapName: arena.group.name, mapTriangles:arena.triangles, collisionTriangles:arena.collisionTriangles, arenaHalfSize:arena.halfSize, shiftLocked, pointerLocked:document.pointerLockElement===canvas, cameraYaw, cameraPitch, cameraDistance, cameraPosition:camera.position.toArray(), velocity:velocity.toArray(), simTime, coyoteRemaining: coyoteAvailable?Math.max(0,COYOTE_TIME-(simTime-lastGroundedAt)):0, jumps, runAnimation:RUN.source, runAnimationTime:runTime, arenaWallCount:arena.wallCount, torsoPose: poseMatrices.Torso.toArray(), characterName: CHARACTER.name, importedBones: importedBones.length, importedSkinMeshes: skinMeshes.size, sourceCharacterMeshes: CHARACTER.sourceMeshCount, weaponGripError: new THREE.Vector3(...CHARACTER.swordGrip).applyMatrix4(poseMatrices.Sword).distanceTo(new THREE.Vector3(...CHARACTER.rightPalm).applyMatrix4(poseMatrices['Right Arm'])), pinPillars: 0, spikeCount: ICE.spikeCount, impactTime: IMPACT, castDuration: CAST_DURATION, abilityKey: "V", renderer: renderer.info.render, started }; },
+  getState() { return { position: actor.position.toArray(), facing, grounded, targetLocked, dummy:{health:dummy.health,maxHealth:dummy.maxHealth,state:dummy.state,position:dummy.position.toArray(),freeze:dummy.freeze,respawnIn:Number.isFinite(dummy.respawnAt)?Math.max(0,dummy.respawnAt-simTime):null}, dashTime,dashCooldown,dashDuration:DASH_DURATION,landedPunches,finishers,finisher:finisher.state(),locked:finisher.active||dashTime>=0||castTime >= 0 || punchTime >= 0, activePunch:punchTime>=0?punchSide:null, punchTime, comboStep,comboQueued,punchCooldown,punchInCombo,comboWindow:COMBO_WINDOW,comboCooldownDuration:PUNCH_COOLDOWN, cooldownDurations:{C:ABILITIES.C.cooldown,V:ABILITIES.V.cooldown}, punchesThrown:{...punchesThrown}, punchDuration:PUNCHES[punchSide].duration, punchImpact:PUNCHES[punchSide].impact, animationTime: castTime, cooldown: cooldowns[castKey], cooldowns: {...cooldowns}, activeAbility: castTime>=0?castKey:null, fxAbility:fxKey, casts, activeIceMeshes: fx.userData.activeMeshes || 0, fxVisible: fx.visible, mapName: arena.group.name, mapTriangles:arena.triangles, collisionTriangles:arena.collisionTriangles, arenaHalfSize:arena.halfSize, shiftLocked, pointerLocked:document.pointerLockElement===canvas, cameraYaw, cameraPitch, cameraDistance, cameraPosition:camera.position.toArray(),cameraForward:camera.getWorldDirection(new THREE.Vector3()).toArray(), velocity:velocity.toArray(), simTime, coyoteRemaining: coyoteAvailable?Math.max(0,COYOTE_TIME-(simTime-lastGroundedAt)):0, jumps, runAnimation:RUN.source, runAnimationTime:runTime, arenaWallCount:arena.wallCount, torsoPose: poseMatrices.Torso.toArray(), characterName: CHARACTER.name, importedBones: importedBones.length, importedSkinMeshes: skinMeshes.size, sourceCharacterMeshes: CHARACTER.sourceMeshCount, weaponGripError: new THREE.Vector3(...CHARACTER.swordGrip).applyMatrix4(poseMatrices.Sword).distanceTo(new THREE.Vector3(...CHARACTER.rightPalm).applyMatrix4(poseMatrices['Right Arm'])), pinPillars: 0, spikeCount: ICE.spikeCount, impactTime: IMPACT, castDuration: CAST_DURATION, abilityKey: "V", renderer: renderer.info.render, started }; },
   ...(TEST ? {
     verifyImportedSkin,
+    setTargetLock(enabled){targetLocked=enabled;lockOrbitYaw=0;cameraInitialized=false;render();},
     inspectPose() { return Object.fromEntries(Object.entries(poseMatrices).map(([name,matrix])=>[name,matrix.toArray()])); },
+    inspectCombatRig(){character.updateWorldMatrix(true,true);dummy.body.updateWorldMatrix(true,true);return{playerWorld:character.matrixWorld.toArray(),dummyWorld:dummy.body.matrixWorld.toArray(),dummyPoses:Object.fromEntries(Object.entries(dummy.parts).map(([n,p])=>[n,p.matrix.toArray()]))};},
     inspectIceFists() {
       character.updateWorldMatrix(true,true);
       return Object.fromEntries(Object.entries(iceFists).map(([side,group])=>{

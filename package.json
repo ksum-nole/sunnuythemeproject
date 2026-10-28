@@ -3,7 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {"start": "node source/server.mjs", "build": "node source/build.mjs", "test": "node source/test-game.mjs"},
-  "dependencies": {"three": "0.180.0"},
-  "devDependencies": {"esbuild": "0.25.11", "playwright-core": "1.56.1"}
+  "scripts": {
+    "start": "node source/server.mjs",
+    "build": "node source/build.mjs",
+    "test": "node source/test-game.mjs",
+    "test:combat": "node source/test-combat.mjs",
+    "test:punches": "node source/test-punches.mjs",
+    "test:movement": "node source/test-movement.mjs"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.11",
+    "playwright-core": "1.56.1"
+  }
 }
