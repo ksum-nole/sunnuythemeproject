@@ -76,7 +76,6 @@ all animations. At punch contact the chest turns fully sideways (about 90
 degrees), the striking arm extends straight forward, and the off-hand guards
 the face. The greater weight transfer and crystal tips increase reach.
 
-SLOWER BLADED PUNCHES
-Left punch: 1.10 seconds. Right cross: 1.30 seconds. Full extension is held
-briefly before recovery. Hips and staggered feet turn sideways with the
-torso. The striking shoulder uses the full rigid arm length.
+FAST 90-DEGREE PUNCHES
+Left punch: 0.60 seconds. Right cross: 0.75 seconds. Full extension is held
+briefly before recovery. Hips, torso, cape and staggered feet complete a full 90-degree turn. The striking shoulder uses the full rigid arm length.

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 export const PUNCHES = {
-  Left: { label: 'Left punch', duration: 1.10, impact: .462, power: .78 },
-  Right: { label: 'Right cross', duration: 1.30, impact: .546, power: 1 }
+  Left: { label: 'Left punch', duration: .60, impact: .252, power: .78 },
+  Right: { label: 'Right cross', duration: .75, impact: .315, power: 1 }
 };
 
 // Phase, hip yaw, chest yaw, shoulder pitch, guard pitch, forward lean,
@@ -73,11 +73,11 @@ export function punchPose(side, seconds, bootBounds, swordBindOffset) {
       .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotation))
       .multiply(translate(-shoulderX,0,-shoulderZ));
     // The complete lower body turns with the pelvis into a staggered blade.
-    // A slight foot counter-turn keeps the lead foot angled toward the strike.
+    // Both feet complete the full 90-degree turn at extension.
     poses[limb+' Leg'] = hips.clone().multiply(translate(s*.22*envelope,0,0))
-      .multiply(pivot(s*.5,0,2,(s===sign?5:-3)*envelope,0,-hip*(s===sign?.25:.05)));
+      .multiply(pivot(s*.5,0,2,(s===sign?5:-3)*envelope,0,-hip*(s===sign?.25:.05)*(1-v(8))));
   }
-  poses.Cape = torso.clone().multiply(pivot(0,-.55,3.8,-v(5)*.28,0,-chest*.15));
+  poses.Cape = torso.clone().multiply(pivot(0,-.55,3.8,-v(5)*.28,0,-chest*.15*(1-v(8))));
   poses.Sword = poses['Right Arm'].clone().multiply(swordBindOffset);
   let lowest = Infinity;
   const point = new THREE.Vector3();
