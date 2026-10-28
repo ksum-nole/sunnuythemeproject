@@ -6,17 +6,17 @@ export const PUNCHES = {
 };
 
 // Phase, hip yaw, chest yaw, shoulder pitch, guard pitch, forward lean,
-// weight transfer, compression. Hips lead; the chest and fist follow through.
+// weight transfer, compression, forward arm alignment.
 const keys = [
-  [0,     0,   0,   0,  0,   0,    0,     0],
-  [.13,  -6, -10,  55, 46,   1, -.025, -.035],
-  [.26, -14, -30,  62, 72,   4, -.065, -.095],
-  [.34,   9,  12,  83, 77,  -5,   .12,  -.06],
-  [.40,  19,  34, 100, 83, -12,   .25,  -.12],
-  [.46,  22,  42, 107, 80, -14,   .29,   -.1],
-  [.59,   9,  13,  82, 75,  -5,    .1,  -.04],
-  [.76,  -3,  -5,  40, 40,   0,     0,     0],
-  [1,     0,   0,   0,  0,   0,     0,     0]
+  [0,     0,   0,   0,  0,   0,     0,     0,  0],
+  [.13,  -6, -10,  55, 46,   1, -.025, -.035,  0],
+  [.26, -14, -26,  62, 72,   4, -.065, -.095, .05],
+  [.34,  32,  52,  83, 77,  -5,   .31,  -.06, .68],
+  [.40,  54,  88,  90, 83,  -9,   .68,  -.12,  1],
+  [.46,  58,  90,  90, 80, -10,   .76,   -.1,  1],
+  [.59,  25,  36,  82, 75,  -5,   .29,  -.04, .55],
+  [.76,  -3,  -5,  40, 40,   0,     0,     0, .03],
+  [1,     0,   0,   0,  0,   0,     0,     0,  0]
 ];
 
 // Monotone cubic curves avoid both keyframe stops and angle overshoot.
@@ -47,7 +47,7 @@ export function punchPose(side, seconds, bootBounds, swordBindOffset) {
   const phase = THREE.MathUtils.clamp(seconds / config.duration, 0, 1);
   const v = n => sample(phase,n), power = config.power;
   const envelope = Math.sin(Math.PI * phase) ** 2;
-  const hip = sign*v(1)*power, chest = sign*v(2)*power;
+  const hip = sign*v(1), chest = sign*v(2);
   const base = translate(-sign*.07*envelope,v(6)*power,v(7));
   const hips = base.clone().multiply(pivot(0,0,2,0,0,hip));
   const torso = hips.clone().multiply(pivot(0,0,2,v(5),0,chest-hip));
@@ -60,7 +60,15 @@ export function punchPose(side, seconds, bootBounds, swordBindOffset) {
     const striking = limb === side;
     const idlePitch = limb === 'Right' ? 9 : 0;
     const pitch = (striking ? v(3) : v(4)) + idlePitch*(1-envelope);
-    poses[limb+' Arm'] = torso.clone().multiply(pivot(s*1.05,0,3.5,pitch,0,-s*(striking?5:13)*envelope));
+    const shoulderX = s*(striking?1.5:1.05);
+    const shoulder = new THREE.Vector3(shoulderX,0,3.5).applyMatrix4(torso);
+    const rotation = new THREE.Quaternion().setFromRotationMatrix(torso)
+      .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(rad(pitch),0,rad(-s*(striking?5:13)*envelope),'XYZ')));
+    const forward = new THREE.Quaternion().setFromEuler(new THREE.Euler(rad(striking?90:128),0,rad(striking?0:-s*18),'XYZ'));
+    rotation.slerp(forward,v(8));
+    poses[limb+' Arm'] = translate(...shoulder.toArray())
+      .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotation))
+      .multiply(translate(-shoulderX,0,-3.5));
     // Keep the feet planted horizontally while the hips rotate above them.
     // R6 limbs stay single rigid pieces: there are no invented elbows or knees.
     poses[limb+' Leg'] = base.clone().multiply(translate(0,(s===-1?.16:-.12)*envelope,0))

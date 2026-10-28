@@ -34,6 +34,13 @@ for group in char['groups']:
  mod=o.modifiers.new('Original R6 skin','ARMATURE');mod.object=rig
  if p['name'].startswith('Icedagger'):o.hide_render=True;o.hide_set(True)
 
+if data.get('iceFists'):
+ ice=data['iceFists'];v=ice['vertices'];colors=ice['colors'];ice_material=material('Fists | crystalline ice',(.24,.7,.9),.16,.24);bs=ice_material.node_tree.nodes.get('Principled BSDF');vc=ice_material.node_tree.nodes.new('ShaderNodeVertexColor');vc.layer_name='Original colors';ice_material.node_tree.links.new(vc.outputs['Color'],bs.inputs['Base Color']);bs.inputs['Emission Color'].default_value=(.004,.035,.07,1);bs.inputs['Emission Strength'].default_value=.38
+ for side,anchor in ice['anchors'].items():
+  vertices=[tuple(v[i+j]+anchor[j]for j in range(3))for i in range(0,len(v),3)];me=bpy.data.meshes.new(side+' fist crystals');me.from_pydata(vertices,[],[tuple(range(i,i+3))for i in range(0,len(vertices),3)]);me.update();o=bpy.data.objects.new(side+' fist | seven ice crystals',me);scene.collection.objects.link(o);me.materials.append(ice_material);col=me.color_attributes.new(name='Original colors',type='FLOAT_COLOR',domain='POINT')
+  for i,c in enumerate(col.data):c.color=(*colors[i*3:i*3+3],1)
+  vg=o.vertex_groups.new(name=side+' Arm');vg.add(list(range(len(vertices))),1,'REPLACE');mod=o.modifiers.new('Follow original hand bone','ARMATURE');mod.object=rig
+
 rig.animation_data_create();actions={}
 for side,clip in data['actions'].items():
  action=bpy.data.actions.new('R6 | '+('Left torque punch'if side=='Left'else'Right power cross'));action.use_fake_user=True;rig.animation_data.action=action;previous={}

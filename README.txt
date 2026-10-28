@@ -69,3 +69,9 @@ PUNCH ANIMATIONS
 Z throws a quick left punch; X throws a heavier right cross. Both are rigid
 R6 animations with hip-led torque, a guarding off-hand, fast extension and
 follow-through. The dagger is hidden during unarmed punches.
+
+ICE FISTS AND FULL EXTENSION
+Seven faceted ice crystals cap each fist and follow its original arm bone in
+all animations. At punch contact the chest turns fully sideways (about 90
+degrees), the striking arm extends straight forward, and the off-hand guards
+the face. The greater weight transfer and crystal tips increase reach.

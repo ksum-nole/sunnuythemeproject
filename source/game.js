@@ -3,6 +3,7 @@ import { Octree } from 'three/addons/math/Octree.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import { MAP, ICE, CHARACTER, RUN, LEGACY_ICE, LEGACY_MOTION } from './generated-assets.js';
 import { PUNCHES, punchPose } from './punches.js';
+import { attachIceFists, FIST_ANCHORS } from './ice-fists.js';
 
 const $ = id => document.getElementById(id);
 const TEST = new URLSearchParams(location.search).has('test');
@@ -150,6 +151,7 @@ for (const row of CHARACTER.groups) {
   character.add(mesh); mesh.bind(importedSkeleton, new THREE.Matrix4());
   skinMeshes.set(p.name, mesh);
 }
+const iceFists = attachIceFists(Object.fromEntries(importedBones.map(bone=>[bone.name,bone])),restMatrices);
 const boneData = Object.fromEntries(Object.entries(CHARACTER.clip).map(([n, data]) => [n, floats(data)]));
 const legacyBoneData = Object.fromEntries(Object.entries(LEGACY_MOTION.clip).map(([n,data])=>[n,floats(data)]));
 const runBoneData = Object.fromEntries(Object.entries(RUN.clip).map(([n,data])=>[n,floats(data)]));
@@ -516,6 +518,14 @@ window.__iceGame = {
   ...(TEST ? {
     verifyImportedSkin,
     inspectPose() { return Object.fromEntries(Object.entries(poseMatrices).map(([name,matrix])=>[name,matrix.toArray()])); },
+    inspectIceFists() {
+      character.updateWorldMatrix(true,true);
+      return Object.fromEntries(Object.entries(iceFists).map(([side,group])=>{
+        const actual=group.getWorldPosition(new THREE.Vector3());
+        const expected=new THREE.Vector3(...FIST_ANCHORS[side]).applyMatrix4(poseMatrices[side+' Arm']).applyMatrix4(character.matrixWorld);
+        return [side,{visible:group.visible,crystals:7,position:actual.toArray(),attachmentError:actual.distanceTo(expected)}];
+      }));
+    },
     raycast(origin,direction) { const hit=world.rayIntersect(new THREE.Ray(new THREE.Vector3(...origin),new THREE.Vector3(...direction).normalize()));return hit?{distance:hit.distance,point:hit.position?.toArray()}:null; },
     advance(seconds) { const n = Math.ceil(seconds * 120); for (let i = 0; i < n; i++) { simulate(seconds / n); updateCamera(seconds / n); } render(); return this.getState(); },
     teleport(x, y, z) { teleportTo(new THREE.Vector3(x, y, z)); cameraInitialized = false; render(); },
