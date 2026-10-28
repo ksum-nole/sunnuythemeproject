@@ -6,6 +6,7 @@ in that file; no server or internet connection is required.
 
 CONTROLS
 WASD / arrows: auto sprint. Shift: toggle shift lock. Space: jump.
+Z: left punch. X: right cross.
 C: original forward ice burst. V: massive ground ice slam.
 Drag: orbit the camera. In shift lock, move the mouse to look and strafe
 with A/D while facing the camera direction. Escape releases the mouse.
@@ -63,3 +64,8 @@ reviews/ce1/native-validation.json: Blender skin and grounded FX checks.
 reviews/ce1/timing.json: source-frame mapping and original-speed downstrike.
 reviews/browser-validation.json: movement, V cast, animation, collision,
 cooldown, reset, offline loading and browser error checks.
+
+PUNCH ANIMATIONS
+Z throws a quick left punch; X throws a heavier right cross. Both are rigid
+R6 animations with hip-led torque, a guarding off-hand, fast extension and
+follow-through. The dagger is hidden during unarmed punches.
