@@ -81,8 +81,8 @@ const capsule = new Capsule(new THREE.Vector3(0, 0.38, 0), new THREE.Vector3(0, 
 const groundProbe = new Capsule();
 let grounded = false, started = false, paused = false;
 let cameraYaw = 0, cameraPitch = 0.37, cameraDistance = 5.4;
-let shiftLocked = false, dragging = false, pointerWasLocked = false;
-let targetLocked=true,lockOrbitYaw=0;
+let dragging = false, pointerWasLocked = false,mouseCapturePending=false;
+let targetLocked=true;
 let facing = 0, runPhase = 0, runTime = 0, simTime = 0;
 let castTime = -1, fxTime = -1, casts = 0, castKey = 'V', fxKey = 'V';
 let punchTime = -1, punchSide = 'Left', punchStartPose = null;
@@ -473,8 +473,8 @@ function simulate(dt) {
     }
     if (grounded && velocity.y < 0.1) velocity.y = 0;
     if(grounded){lastGroundedAt=simTime;coyoteAvailable=true;consumeJump();}
-    if (targetLocked || shiftLocked || desired.lengthSq() > 0.1) {
-      const target = targetLocked?Math.atan2(actor.position.x-dummy.position.x,actor.position.z-dummy.position.z):shiftLocked ? cameraYaw : Math.atan2(-desired.x, -desired.z);
+    if (targetLocked || desired.lengthSq() > 0.1) {
+      const target = targetLocked?Math.atan2(actor.position.x-dummy.position.x,actor.position.z-dummy.position.z):Math.atan2(-desired.x, -desired.z);
       const turn = Math.atan2(Math.sin(target - facing), Math.cos(target - facing));
       facing += turn * (1 - Math.exp(-TURN_RESPONSE * dt));
       facing = Math.atan2(Math.sin(facing), Math.cos(facing));
@@ -500,8 +500,8 @@ let cameraInitialized = false,finishCameraBlend=0;
 function updateCamera(dt) {
   if(finisher.active&&finisher.result){const shot=finisher.result;camera.position.lerp(shot.cameraPosition,1-Math.exp(-10*Math.max(dt,.0001)));camera.lookAt(shot.cameraTarget);lockLook.copy(shot.cameraTarget);return;}
   const target = actor.position.clone().add(new THREE.Vector3(0, 1.6, 0));
-  if(targetLocked){const yaw=Math.atan2(actor.position.x-dummy.position.x,actor.position.z-dummy.position.z)+lockOrbitYaw;cameraYaw+=Math.atan2(Math.sin(yaw-cameraYaw),Math.cos(yaw-cameraYaw))*(1-Math.exp(-10*Math.max(dt,.0001)));}
-  if (shiftLocked||targetLocked) target.add(new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).multiplyScalar(targetLocked?1.55:.65));
+  if(targetLocked){const yaw=Math.atan2(actor.position.x-dummy.position.x,actor.position.z-dummy.position.z);cameraYaw+=Math.atan2(Math.sin(yaw-cameraYaw),Math.cos(yaw-cameraYaw))*(1-Math.exp(-10*Math.max(dt,.0001)));}
+  if (targetLocked) target.add(new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).multiplyScalar(1.55));
   if (!cameraInitialized) { cameraTarget.copy(target);lockLook.copy(dummy.position).add(new THREE.Vector3(0,1.22,0)); cameraInitialized = true; }
   cameraTarget.lerp(target, 1 - Math.exp(-16 * Math.max(dt, 0.0001)));
   const horizontal = Math.cos(cameraPitch) * cameraDistance;
@@ -519,7 +519,7 @@ function updateHUD() {
   const casting = castTime >= 0, punching = punchTime >= 0;
   $('target-health').textContent=dummy.state==='alive'?`${dummy.health} / ${dummy.maxHealth}`:dummy.state==='frozen'?'FROZEN':'FINISHER';
   $('target-health-fill').style.transform=`scaleX(${dummy.health/dummy.maxHealth})`;
-  $('target-state').textContent=dummy.state==='frozen'&&Number.isFinite(dummy.respawnAt)?`RESPAWN ${Math.max(0,Math.ceil(dummy.respawnAt-simTime))}s`:'TARGET LOCKED';
+  $('target-state').textContent=dummy.state==='frozen'&&Number.isFinite(dummy.respawnAt)?`RESPAWN ${Math.max(0,Math.ceil(dummy.respawnAt-simTime))}s`:targetLocked?'TARGET LOCKED':'TARGET UNLOCKED';
   $('combo-status').textContent=finisher.active?`FINISHER · ${finisher.phase.toUpperCase()}`:punchCooldown>0?`PUNCH COMBO · ${punchCooldown.toFixed(1)}s`:punchInCombo?`PUNCH COMBO · ${comboStep} / 4`:comboStep>0?`COMBO · ${comboStep} / 4 · CLICK FOR ${PUNCH_SEQUENCE[comboStep].toUpperCase()}`:'CLICK · R → L → R → L';
   $('combo-status').classList.toggle('cooling',punchCooldown>0);
   $('ability-state').textContent = finisher.active?'Ice finisher':dashTime>=0?'Forward dash':punching ? PUNCHES[punchSide].label : casting ? `${ABILITIES[castKey].label} · ${castTime<ABILITIES[castKey].impact?'Wind-up':'Recovery'}` : 'C · Ice stomp / V · Massive slam';
@@ -534,30 +534,44 @@ function updateHUD() {
   document.querySelector('.ability-panel').classList.toggle('casting', casting);
   if (simTime > toastExpiry) $('toast').classList.remove('visible');
 }
+function wantsMouseCapture(){return started&&!paused&&targetLocked;}
+function syncLockOnUI(){
+  const active=wantsMouseCapture();document.body.classList.toggle('target-locked',active);document.body.classList.toggle('shift-locked',active);
+  $('shift-lock').setAttribute('aria-pressed',String(targetLocked));$('camera-mode').textContent=targetLocked?'R6 · TARGET LOCKED':'R6 · FREE LOOK';
+}
 function start() {
-  started = true; paused = false; $('welcome').classList.add('hidden'); canvas.focus({ preventScroll: true });
+  started = true; paused = false; $('welcome').classList.add('hidden'); canvas.focus({ preventScroll: true });syncLockOnUI();captureMouse();
 }
 $('start').addEventListener('click', start);
 $('cast').addEventListener('click', ()=>castIce('V'));
 $('cast-c').addEventListener('click',()=>castIce('C'));
 $('dash-button').addEventListener('click',dash);
 function captureMouse() {
+  if(!wantsMouseCapture()||document.pointerLockElement===canvas||mouseCapturePending)return;
+  mouseCapturePending=true;
   try {
     const request = canvas.requestPointerLock?.();
-    request?.catch(() => { if (shiftLocked) toast('Click the arena to capture the mouse'); });
-  } catch { if (shiftLocked) toast('Click the arena to capture the mouse'); }
+    if(request?.then)request.then(()=>{mouseCapturePending=false;if(!wantsMouseCapture()&&document.pointerLockElement===canvas)document.exitPointerLock();},()=>{mouseCapturePending=false;if(wantsMouseCapture())toast('Click the arena to capture the mouse');});
+    else mouseCapturePending=false;
+  } catch {mouseCapturePending=false;if(wantsMouseCapture())toast('Click the arena to capture the mouse');}
 }
-function setShiftLock(enabled) {
-  shiftLocked = enabled; dragging = false;
-  document.body.classList.toggle('shift-locked', enabled);
-  $('shift-lock').setAttribute('aria-pressed', String(enabled));
-  if (enabled) { canvas.focus({ preventScroll: true }); captureMouse(); }
-  else if (document.pointerLockElement === canvas) document.exitPointerLock();
+function setLockOn(enabled,capture=true) {
+  targetLocked=enabled;dragging=false;
+  if(enabled){cameraPitch=.37;cameraDistance=5.4;cameraInitialized=false;finishCameraBlend=.25;}
+  syncLockOnUI();
+  if(enabled&&capture){canvas.focus({preventScroll:true});captureMouse();}
+  else if(!enabled){pointerWasLocked=false;if(document.pointerLockElement===canvas)document.exitPointerLock();}
 }
-$('shift-lock').addEventListener('click', () => { if (started && !paused) setShiftLock(!shiftLocked); });
-$('help').addEventListener('click', () => { paused = true; keys.clear(); setShiftLock(false); $('welcome').classList.remove('hidden'); $('start').firstChild.textContent = 'Return to arena '; });
+function pauseGame(){
+  paused=true;keys.clear();dragging=false;syncLockOnUI();pointerWasLocked=false;
+  if(document.pointerLockElement===canvas)document.exitPointerLock();
+  $('welcome').classList.remove('hidden');$('start').firstChild.textContent='Return to arena ';
+}
+$('shift-lock').addEventListener('click', () => { if (started && !paused) setLockOn(!targetLocked); });
+$('help').addEventListener('click',pauseGame);
 window.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(e.code)) e.preventDefault();
+  if(e.code==='Escape'){if(started&&!paused)pauseGame();return;}
   keys.add(e.code);
   if (!e.repeat) {
     if (e.code === 'KeyV') castIce();
@@ -566,35 +580,36 @@ window.addEventListener('keydown', e => {
     if (e.code === 'KeyX') punch('Right');
     if (e.code === 'KeyQ') dash();
     if (e.code === 'Space') jump();
-    if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && started && !paused) setShiftLock(!shiftLocked);
-    if (e.code === 'Escape' && shiftLocked) setShiftLock(false);
+    if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && started && !paused) setLockOn(!targetLocked);
     if (e.code === 'KeyR' && started) { teleportTo(); toast('Reset to the arena'); }
-    if (e.code === 'Enter' && !started) start();
-    if (e.code === 'Escape' && paused) start();
+    if (e.code === 'Enter' && (!started||paused)) start();
   }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
-window.addEventListener('blur', () => { keys.clear(); setShiftLock(false); });
+window.addEventListener('blur',()=>keys.clear());
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
-  if (pointerWasLocked && !locked) setShiftLock(false);
+  mouseCapturePending=false;
+  if(locked&&!wantsMouseCapture()){pointerWasLocked=false;document.exitPointerLock();return;}
+  const escaped=pointerWasLocked&&!locked;
   pointerWasLocked = locked;
+  if(escaped&&wantsMouseCapture())pauseGame();
 });
 canvas.addEventListener('pointerdown', e => {
   if(!started||paused)return;canvas.focus({preventScroll:true});
-  if(shiftLocked&&document.pointerLockElement!==canvas)captureMouse();
+  if(targetLocked&&document.pointerLockElement!==canvas)captureMouse();
   if(e.button===0){comboPunch();return;}
-  if(e.button===2&&!shiftLocked){dragging=true;canvas.setPointerCapture(e.pointerId);}
+  if(e.button===2&&!targetLocked){dragging=true;canvas.setPointerCapture(e.pointerId);}
 });
 canvas.addEventListener('pointerup', e => { if(e.button!==2)return;dragging = false; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); });
 canvas.addEventListener('pointercancel', () => dragging = false);
 document.addEventListener('mousemove', e => {
-  if (finisher.active || !started || paused || !(dragging || document.pointerLockElement === canvas || (shiftLocked && e.target === canvas))) return;
-  if(targetLocked)lockOrbitYaw=THREE.MathUtils.clamp(lockOrbitYaw-e.movementX*.004,-.65,.65);else cameraYaw -= e.movementX * 0.006;
+  if(targetLocked||finisher.active||!started||paused||!dragging)return;
+  cameraYaw-=e.movementX*.006;
   cameraPitch = THREE.MathUtils.clamp(cameraPitch + e.movementY * 0.004, -0.1, 1.15);
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
-canvas.addEventListener('wheel', e => { e.preventDefault(); cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.005, 2.4, 11.5); }, { passive: false });
+canvas.addEventListener('wheel', e => { e.preventDefault();if(targetLocked||finisher.active||paused)return;cameraDistance = THREE.MathUtils.clamp(cameraDistance + e.deltaY * 0.005, 2.4, 11.5); }, { passive: false });
 window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 let previousFrame = performance.now();
 function render() { updateCamera(1 / 60); renderer.render(scene, camera); }
@@ -611,10 +626,10 @@ proceduralPose(0); actor.position.copy(spawn); updateCamera(1); renderer.render(
 $('loading').classList.add('hidden'); $('welcome').classList.remove('hidden');
 window.__iceGame = {
   ready: true,
-  getState() { return { position: actor.position.toArray(), facing, grounded, targetLocked, dummy:{health:dummy.health,maxHealth:dummy.maxHealth,state:dummy.state,position:dummy.position.toArray(),freeze:dummy.freeze,respawnIn:Number.isFinite(dummy.respawnAt)?Math.max(0,dummy.respawnAt-simTime):null}, dashTime,dashCooldown,dashDuration:DASH_DURATION,landedPunches,finishers,finisher:finisher.state(),locked:finisher.active||dashTime>=0||castTime >= 0 || punchTime >= 0, activePunch:punchTime>=0?punchSide:null, punchTime, comboStep,comboQueued,punchCooldown,punchInCombo,comboWindow:COMBO_WINDOW,comboCooldownDuration:PUNCH_COOLDOWN, cooldownDurations:{C:ABILITIES.C.cooldown,V:ABILITIES.V.cooldown}, punchesThrown:{...punchesThrown}, punchDuration:PUNCHES[punchSide].duration, punchImpact:PUNCHES[punchSide].impact, animationTime: castTime, cooldown: cooldowns[castKey], cooldowns: {...cooldowns}, activeAbility: castTime>=0?castKey:null, fxAbility:fxKey, casts, activeIceMeshes: fx.userData.activeMeshes || 0, fxVisible: fx.visible, mapName: arena.group.name, mapTriangles:arena.triangles, collisionTriangles:arena.collisionTriangles, arenaHalfSize:arena.halfSize, shiftLocked, pointerLocked:document.pointerLockElement===canvas, cameraYaw, cameraPitch, cameraDistance, cameraPosition:camera.position.toArray(),cameraForward:camera.getWorldDirection(new THREE.Vector3()).toArray(), velocity:velocity.toArray(), simTime, coyoteRemaining: coyoteAvailable?Math.max(0,COYOTE_TIME-(simTime-lastGroundedAt)):0, jumps, runAnimation:RUN.source, runAnimationTime:runTime, arenaWallCount:arena.wallCount, torsoPose: poseMatrices.Torso.toArray(), characterName: CHARACTER.name, importedBones: importedBones.length, importedSkinMeshes: skinMeshes.size, sourceCharacterMeshes: CHARACTER.sourceMeshCount, weaponGripError: new THREE.Vector3(...CHARACTER.swordGrip).applyMatrix4(poseMatrices.Sword).distanceTo(new THREE.Vector3(...CHARACTER.rightPalm).applyMatrix4(poseMatrices['Right Arm'])), pinPillars: 0, spikeCount: ICE.spikeCount, impactTime: IMPACT, castDuration: CAST_DURATION, abilityKey: "V", renderer: renderer.info.render, started }; },
+  getState() { return { position: actor.position.toArray(), facing, grounded, targetLocked, dummy:{health:dummy.health,maxHealth:dummy.maxHealth,state:dummy.state,position:dummy.position.toArray(),freeze:dummy.freeze,respawnIn:Number.isFinite(dummy.respawnAt)?Math.max(0,dummy.respawnAt-simTime):null}, dashTime,dashCooldown,dashDuration:DASH_DURATION,landedPunches,finishers,finisher:finisher.state(),locked:finisher.active||dashTime>=0||castTime >= 0 || punchTime >= 0, activePunch:punchTime>=0?punchSide:null, punchTime, comboStep,comboQueued,punchCooldown,punchInCombo,comboWindow:COMBO_WINDOW,comboCooldownDuration:PUNCH_COOLDOWN, cooldownDurations:{C:ABILITIES.C.cooldown,V:ABILITIES.V.cooldown}, punchesThrown:{...punchesThrown}, punchDuration:PUNCHES[punchSide].duration, punchImpact:PUNCHES[punchSide].impact, animationTime: castTime, cooldown: cooldowns[castKey], cooldowns: {...cooldowns}, activeAbility: castTime>=0?castKey:null, fxAbility:fxKey, casts, activeIceMeshes: fx.userData.activeMeshes || 0, fxVisible: fx.visible, mapName: arena.group.name, mapTriangles:arena.triangles, collisionTriangles:arena.collisionTriangles, arenaHalfSize:arena.halfSize, paused,cursorHidden:wantsMouseCapture(),shiftLocked:targetLocked,pointerLocked:document.pointerLockElement===canvas, cameraYaw, cameraPitch, cameraDistance, cameraPosition:camera.position.toArray(),cameraForward:camera.getWorldDirection(new THREE.Vector3()).toArray(), velocity:velocity.toArray(), simTime, coyoteRemaining: coyoteAvailable?Math.max(0,COYOTE_TIME-(simTime-lastGroundedAt)):0, jumps, runAnimation:RUN.source, runAnimationTime:runTime, arenaWallCount:arena.wallCount, torsoPose: poseMatrices.Torso.toArray(), characterName: CHARACTER.name, importedBones: importedBones.length, importedSkinMeshes: skinMeshes.size, sourceCharacterMeshes: CHARACTER.sourceMeshCount, weaponGripError: new THREE.Vector3(...CHARACTER.swordGrip).applyMatrix4(poseMatrices.Sword).distanceTo(new THREE.Vector3(...CHARACTER.rightPalm).applyMatrix4(poseMatrices['Right Arm'])), pinPillars: 0, spikeCount: ICE.spikeCount, impactTime: IMPACT, castDuration: CAST_DURATION, abilityKey: "V", renderer: renderer.info.render, started }; },
   ...(TEST ? {
     verifyImportedSkin,
-    setTargetLock(enabled){targetLocked=enabled;lockOrbitYaw=0;cameraInitialized=false;render();},
+    setTargetLock(enabled){setLockOn(enabled,false);cameraInitialized=false;render();},
     inspectPose() { return Object.fromEntries(Object.entries(poseMatrices).map(([name,matrix])=>[name,matrix.toArray()])); },
     inspectCombatRig(){character.updateWorldMatrix(true,true);dummy.body.updateWorldMatrix(true,true);return{playerWorld:character.matrixWorld.toArray(),dummyWorld:dummy.body.matrixWorld.toArray(),dummyPoses:Object.fromEntries(Object.entries(dummy.parts).map(([n,p])=>[n,p.matrix.toArray()]))};},
     inspectIceFists() {

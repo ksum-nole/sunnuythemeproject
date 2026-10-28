@@ -9,7 +9,8 @@
     "test": "node source/test-game.mjs",
     "test:combat": "node source/test-combat.mjs",
     "test:punches": "node source/test-punches.mjs",
-    "test:movement": "node source/test-movement.mjs"
+    "test:movement": "node source/test-movement.mjs",
+    "test:lockon": "node source/test-lockon.mjs"
   },
   "dependencies": {
     "three": "0.180.0"

@@ -8,8 +8,11 @@ CONTROLS
 WASD / arrows: auto sprint and strafe. Space: jump.
 Q: forward dash with a leaning R6 animation (1.25s cooldown).
 Left-click: right / left / right / left punch combo. Every punch steps forward.
-The camera locks onto the training dummy. Right-drag adjusts the view around
-it. Shift captures the mouse; Escape releases it. Wheel: zoom. R: reset.
+Lock-on starts enabled: the camera stays fixed on the dummy and ignores
+mouse motion, right-drag and scroll. The cursor is captured and hidden
+automatically. Shift toggles lock-on. With lock-on off, right-drag and the
+wheel adjust the free camera. Escape pauses and releases the cursor;
+click Return to arena or press Enter to resume. R: reset.
 C: forward ice stomp (5s cooldown). V: massive ground slam (10s cooldown).
 Z / X remain individual punch shortcuts and share the punch recovery gate.
 
@@ -43,7 +46,8 @@ Movement uses Pure_Sprint_Animation.blend, immediate speed changes, air
 steering, 120ms coyote time and jump buffering, and smooth quick turns.
 The left punch lasts 0.60s and the right cross 0.75s, with a full 90-degree
 body turn and full arm extension. Seven ice crystals follow each hand bone.
-The ice abilities retain manual zoom; only the finisher uses a cinematic view.
+Lock-on keeps the fixed camera preset during ice abilities; the finisher
+uses a cinematic view.
 
 SOURCE AND VALIDATION
 npm ci
@@ -52,6 +56,7 @@ npm test
 npm run test:combat
 npm run test:punches
 npm run test:movement
+npm run test:lockon
 Set GAME_TEST_BROWSER to a Chromium executable if necessary.
 
 source/game.js: controls, collision, target camera, damage and combat state.
