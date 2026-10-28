@@ -33,13 +33,13 @@ checks.push('Faster punches hold full forward extension with an exact 90-degree 
 const browser=await chromium.launch({headless:true,executablePath:process.env.GAME_TEST_BROWSER||'/Users/jacobatamas/Library/Caches/ms-playwright/chromium-1194/chrome-mac/Chromium.app/Contents/MacOS/Chromium',args:['--use-gl=angle','--use-angle=metal']});
 try{
  const page=await browser.newPage({viewport:{width:1280,height:800}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('file://'+resolve('dist/index.html')+'?test=1');await page.waitForFunction(()=>window.__iceGame?.ready);await page.getByRole('button',{name:'Enter foundry'}).click();
+ await page.goto('file://'+resolve('dist/index.html')+'?test=1');await page.waitForFunction(()=>window.__iceGame?.ready);await page.getByRole('button',{name:'Enter arena'}).click();
  const checkFists=async()=>{const fists=await page.evaluate(()=>window.__iceGame.inspectIceFists());for(const side of ['Left','Right']){assert(fists[side].visible&&fists[side].crystals===7);assert(fists[side].attachmentError<.00001,'Ice crystals must stay exactly attached to the hand');}};
  const advance=t=>page.evaluate(t=>window.__iceGame.advance(t),t);const state=()=>page.evaluate(()=>window.__iceGame.getState());await advance(.4);await checkFists();
  for(const [side,key]of[['Left','z'],['Right','x']]){
   const before=await state();await page.keyboard.press(key);let a=await state();assert.equal(a.activePunch,side);assert.equal(a.punchesThrown[side],before.punchesThrown[side]+1);
   await page.keyboard.down('w');await page.keyboard.press('Space');await page.keyboard.press('v');await page.keyboard.press(key==='z'?'x':'z');a=await advance(PUNCHES[side].impact);assert.equal(a.activePunch,side);assert.equal(a.casts,before.casts);assert.equal(a.jumps,before.jumps);assert(a.position.every((v,i)=>Math.abs(v-before.position[i])<1e-6));assert(a.weaponGripError<.00001);await checkFists();
-  await page.keyboard.up('w');a=await advance(PUNCHES[side].duration);assert.equal(a.activePunch,null);assert(!a.locked);await checkFists();
+  await page.keyboard.up('w');a=await advance(PUNCHES[side].duration+.71);assert.equal(a.activePunch,null);assert(!a.locked);await checkFists();
  }
  checks.push('Z and X play the correct arm; punch recovery restores control; attacks do not overlap ice or jump actions');
  await page.keyboard.press('v');await page.keyboard.press('z');assert.equal((await state()).activePunch,null);await page.keyboard.press('r');await advance(.4);await page.keyboard.press('Space');await page.keyboard.press('x');assert.equal((await state()).activePunch,null);await page.keyboard.press('r');await advance(.4);await page.keyboard.press('z');await page.keyboard.press('r');assert.equal((await state()).activePunch,null);

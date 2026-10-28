@@ -1,21 +1,23 @@
 import * as THREE from 'three';
 import { Octree } from 'three/addons/math/Octree.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
-import { MAP, ICE, CHARACTER, RUN, LEGACY_ICE, LEGACY_MOTION } from './generated-assets.js';
+import { ICE, CHARACTER, RUN, LEGACY_ICE, LEGACY_MOTION } from './generated-assets.js';
 import { PUNCHES, punchPose } from './punches.js';
 import { attachIceFists, FIST_ANCHORS } from './ice-fists.js';
+import { createOpenArena } from './open-arena.js';
 
 const $ = id => document.getElementById(id);
 const TEST = new URLSearchParams(location.search).has('test');
 const SCALE = 0.36;
 const CAST_DURATION = (CHARACTER.frames - 1) / CHARACTER.fps;
-const COOLDOWN = Math.max(3.7, CAST_DURATION + 0.65);
+const COOLDOWN = 10;
 const IMPACT = ICE.impactFrame / ICE.fps;
 const FX_DURATION = ICE.fxDuration;
 const ABILITIES = {
   V: { motion: CHARACTER, ice: ICE, duration: CAST_DURATION, impact: IMPACT, fxDuration: FX_DURATION, cooldown: COOLDOWN, label: 'Massive ice slam' },
-  C: { motion: LEGACY_MOTION, ice: LEGACY_ICE, duration: (LEGACY_MOTION.frames - 1) / LEGACY_MOTION.fps, impact: (LEGACY_ICE.impactFrame - 1) / LEGACY_ICE.fps, fxDuration: 3.05, cooldown: 3.7, label: 'Ice stomp' }
+  C: { motion: LEGACY_MOTION, ice: LEGACY_ICE, duration: (LEGACY_MOTION.frames - 1) / LEGACY_MOTION.fps, impact: (LEGACY_ICE.impactFrame - 1) / LEGACY_ICE.fps, fxDuration: 3.05, cooldown: 5, label: 'Ice stomp' }
 };
+const PUNCH_SEQUENCE=['Right','Left','Right','Left'],PUNCH_COOLDOWN=.7,COMBO_WINDOW=1;
 const COYOTE_TIME = 0.12, JUMP_BUFFER = 0.12;
 const MOVE_SPEED = 8.6, TURN_RESPONSE = 22;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -23,8 +25,8 @@ const Z_UP = new THREE.Vector3(0, 0, 1);
 const TAU = Math.PI * 2;
 const keys = new Set();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x253944);
-scene.fog = new THREE.FogExp2(0x2b424d, 0.009);
+scene.background = new THREE.Color(0x718c99);
+scene.fog = new THREE.FogExp2(0x718c99, 0.0045);
 const canvas = $('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
@@ -41,16 +43,13 @@ const sun = new THREE.DirectionalLight(0xffedcf, 3.1);
 sun.position.set(-18, 37, 17);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -39, right: 39, top: 35, bottom: -35, near: 1, far: 95 });
+Object.assign(sun.shadow.camera, { left: -68, right: 68, top: 64, bottom: -64, near: 1, far: 180 });
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.035;
 scene.add(sun, sun.target);
 const skyFill = new THREE.DirectionalLight(0xb8e8ff, 1.1);
 skyFill.position.set(24, 17, -22);
 scene.add(skyFill);
-const reactorGlow = new THREE.PointLight(0x66d9ff, 24, 17, 2);
-reactorGlow.position.set(0, 3.8, 0);
-scene.add(reactorGlow);
 
 function bytes64(string) {
   const raw = atob(string), bytes = new Uint8Array(raw.length);
@@ -68,38 +67,10 @@ function meshGeometry(encoded, indices) {
   geometry.computeBoundingSphere();
   return geometry;
 }
-const map = new THREE.Group();
-map.name = 'CINDER 07 / original foundry';
-map.rotation.x = -Math.PI / 2;
-for (const group of MAP.groups) {
-  const p = group.material;
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, metalness: p.metalness, roughness: Math.max(0.3, p.roughness), emissive: new THREE.Color(...p.emission), emissiveIntensity: p.emissionStrength });
-  const mesh = new THREE.Mesh(meshGeometry(group.vertices, group.indices), mat);
-  mesh.name = p.name;
-  mesh.castShadow = mesh.receiveShadow = true;
-  map.add(mesh);
-}
-scene.add(map);
-const collisionGeometry = new THREE.BufferGeometry();
-collisionGeometry.setAttribute('position', new THREE.BufferAttribute(floats(MAP.collision), 3));
-collisionGeometry.rotateX(-Math.PI / 2);
-const collisionMesh = new THREE.Mesh(collisionGeometry, new THREE.MeshBasicMaterial());
-collisionMesh.updateMatrixWorld(true);
-const arenaWalls = new THREE.Group(); arenaWalls.name = 'Arena perimeter walls';
-const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x25424c, roughness: 0.7, metalness: 0.3 });
-const capMaterial = new THREE.MeshStandardMaterial({ color: 0x42616a, roughness: 0.5, metalness: 0.45 });
-const stripeMaterial = new THREE.MeshBasicMaterial({ color: 0x8da882 });
-const collisionRoot = new THREE.Group(); collisionRoot.add(collisionMesh);
-for (const [x,z,sx,sz] of [[-28,0,.6,48.6],[28,0,.6,48.6],[0,-24,56.6,.6],[0,24,56.6,.6]]) {
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(sx,7.5,sz),wallMaterial);
-  wall.position.set(x,3.75,z);wall.castShadow=wall.receiveShadow=true;wall.name='Solid arena boundary';arenaWalls.add(wall);collisionRoot.add(wall.clone());
-  for(const [y,h,material] of [[7.55,.20,capMaterial],[.65,.13,stripeMaterial]]){
-    const band=new THREE.Mesh(new THREE.BoxGeometry(sx+.05,h,sz+.05),material);band.position.set(x,y,z);arenaWalls.add(band);
-  }
-}
-scene.add(arenaWalls);
-const world = new Octree().fromGraphNode(collisionRoot);
-const spawn = new THREE.Vector3(-7.5, 0.1, 16);
+const arena=createOpenArena();
+scene.add(arena.group);
+const world=new Octree().fromGraphNode(arena.collisionRoot);
+const spawn=arena.spawn;
 const velocity = new THREE.Vector3();
 const capsule = new Capsule(new THREE.Vector3(0, 0.38, 0), new THREE.Vector3(0, 1.6, 0), 0.38);
 const groundProbe = new Capsule();
@@ -110,6 +81,7 @@ let facing = 0, runPhase = 0, runTime = 0, simTime = 0;
 let castTime = -1, fxTime = -1, casts = 0, castKey = 'V', fxKey = 'V';
 let punchTime = -1, punchSide = 'Left', punchStartPose = null;
 const punchesThrown = { Left: 0, Right: 0 };
+let comboStep=0,comboQueued=0,comboExpiresAt=-Infinity,punchCooldown=0,punchInCombo=false;
 const cooldowns = { C: 0, V: 0 };
 let lastGroundedAt = -Infinity, coyoteAvailable = false, jumpBufferedUntil = -Infinity, jumps = 0;
 let shake = 0, impactFired = false, jumping = false;
@@ -326,6 +298,7 @@ function teleportTo(location = spawn) {
   capsule.translate(offset); velocity.set(0, 0, 0); grounded = false; jumping = false;
   castTime = -1; fxTime = -1; cooldowns.C = cooldowns.V = 0; castKey = fxKey = 'V'; fx.visible = false; facing = 0; impactFired = false;
   punchTime = -1; punchStartPose = null;
+  comboStep=comboQueued=0;comboExpiresAt=-Infinity;punchCooldown=0;punchInCombo=false;
   lastGroundedAt = -Infinity; coyoteAvailable = false; jumpBufferedUntil = -Infinity; runTime = 0;
   actor.position.copy(location); actor.rotation.y = 0;
 }
@@ -336,6 +309,7 @@ function castIce(key='V') {
   const ability=ABILITIES[key];
   if (!started || paused || castTime >= 0 || punchTime >= 0 || cooldowns[key] > 0) return false;
   if (!grounded) { toast('Land before using Ice slam'); return false; }
+  comboStep=comboQueued=0;comboExpiresAt=-Infinity;
   castKey=fxKey=key;castTime = 0; fxTime = 0; cooldowns[key] = ability.cooldown; velocity.set(0, 0, 0);jumpBufferedUntil=-Infinity;coyoteAvailable=false;
   lockedAt.copy(groundPosition());
   fx.position.copy(lockedAt); fx.rotation.y = facing;
@@ -343,17 +317,43 @@ function castIce(key='V') {
   canvas.focus({ preventScroll: true });
   return true;
 }
-function punch(side) {
-  if (!started || paused || castTime >= 0 || punchTime >= 0 || !grounded) return false;
+function punch(side,inCombo=false) {
+  if (!started || paused || castTime >= 0 || punchTime >= 0 || punchCooldown>0 || !grounded) return false;
+  if(!inCombo){comboStep=comboQueued=0;comboExpiresAt=-Infinity;}
+  punchInCombo=inCombo;
   punchStartPose = Object.fromEntries(Object.entries(poseMatrices).map(([name,m])=>[name,m.clone()]));
   punchSide = side; punchTime = 0; punchesThrown[side]++;
   velocity.set(0,0,0);jumpBufferedUntil=-Infinity;coyoteAvailable=false;
   canvas.focus({preventScroll:true});return true;
 }
+function nextComboHit() {
+  if(comboStep>=PUNCH_SEQUENCE.length)return false;
+  if(!punch(PUNCH_SEQUENCE[comboStep],true))return false;
+  comboStep++;return true;
+}
+function comboPunch() {
+  if(!started||paused||!grounded||castTime>=0||punchCooldown>0)return false;
+  if(punchTime>=0){
+    if(!punchInCombo||comboStep+comboQueued>=PUNCH_SEQUENCE.length)return false;
+    comboQueued++;return true;
+  }
+  if(simTime>comboExpiresAt)comboStep=0;
+  return nextComboHit();
+}
+function finishPunch() {
+  const wasCombo=punchInCombo;
+  punchTime=-1;punchStartPose=null;punchInCombo=false;
+  if(wasCombo&&comboQueued>0&&comboStep<PUNCH_SEQUENCE.length){comboQueued--;nextComboHit();return;}
+  if(!wasCombo||comboStep===PUNCH_SEQUENCE.length){
+    punchCooldown=PUNCH_COOLDOWN;comboStep=comboQueued=0;comboExpiresAt=-Infinity;
+  }else comboExpiresAt=simTime+COMBO_WINDOW;
+}
 const desired = new THREE.Vector3(), delta = new THREE.Vector3();
 function simulate(dt) {
   if (!started || paused) return;
   simTime += dt; for(const key of ['C','V'])cooldowns[key]=Math.max(0,cooldowns[key]-dt);
+  punchCooldown=Math.max(0,punchCooldown-dt);
+  if(punchTime<0&&comboStep>0&&simTime>comboExpiresAt){comboStep=comboQueued=0;}
   if (castTime >= 0) {
     castTime += dt;
     velocity.set(0, 0, 0);
@@ -361,7 +361,10 @@ function simulate(dt) {
     if (castTime >= ABILITIES[castKey].duration) castTime = -1;
   } else if (punchTime >= 0) {
     punchTime += dt; velocity.set(0,0,0);
-    if (punchTime >= PUNCHES[punchSide].duration) { punchTime = -1; punchStartPose = null; }
+    if (punchTime >= PUNCHES[punchSide].duration) {
+      // Capture the outgoing recovery before blending into a buffered hit.
+      animateCharacter(0);finishPunch();
+    }
   } else {
     consumeJump();
     desired.set(0, 0, 0);
@@ -403,7 +406,7 @@ function simulate(dt) {
   }
   if (fxTime >= 0) { fxTime += dt; if (fxTime > ABILITIES[fxKey].fxDuration) fxTime = -1; }
   actor.position.copy(groundPosition()); actor.rotation.y = facing;
-  if (actor.position.y < -5 || Math.abs(actor.position.x) > 33 || Math.abs(actor.position.z) > 30) { teleportTo(); toast('Back at the courtyard'); }
+  if (actor.position.y < -5 || Math.abs(actor.position.x) > arena.halfSize+5 || Math.abs(actor.position.z) > arena.halfSize+5) { teleportTo(); toast('Back at arena spawn'); }
   shake *= Math.exp(-17 * dt);
   animateCharacter(dt); animateEffects(); updateHUD();
 }
@@ -435,10 +438,13 @@ function updateCamera(dt) {
 }
 function updateHUD() {
   const casting = castTime >= 0, punching = punchTime >= 0;
+  $('combo-status').textContent=punchCooldown>0?`PUNCH COMBO · ${punchCooldown.toFixed(1)}s`:punchInCombo?`PUNCH COMBO · ${comboStep} / 4`:comboStep>0?`COMBO · ${comboStep} / 4 · CLICK FOR ${PUNCH_SEQUENCE[comboStep].toUpperCase()}`:'CLICK · R → L → R → L';
+  $('combo-status').classList.toggle('cooling',punchCooldown>0);
   $('ability-state').textContent = punching ? PUNCHES[punchSide].label : casting ? `${ABILITIES[castKey].label} · ${castTime<ABILITIES[castKey].impact?'Wind-up':'Recovery'}` : 'C · Ice stomp / V · Massive slam';
   for(const key of ['C','V']){
     $(key==='V'?'cast':'cast-c').setAttribute('aria-disabled',String(casting||punching||cooldowns[key]>0));
     $(key==='V'?'cooldown-cover':'cooldown-cover-c').style.transform=`scaleY(${cooldowns[key]/ABILITIES[key].cooldown})`;
+    $(key==='V'?'cooldown-time':'cooldown-time-c').textContent=cooldowns[key]>0?`${Math.ceil(cooldowns[key])}s`:'';
   }
   $('ability-meter-fill').style.transform = `scaleX(${1 - cooldowns[castKey] / ABILITIES[castKey].cooldown})`;
   document.querySelector('.ability-panel').classList.toggle('casting', casting);
@@ -464,7 +470,7 @@ function setShiftLock(enabled) {
   else if (document.pointerLockElement === canvas) document.exitPointerLock();
 }
 $('shift-lock').addEventListener('click', () => { if (started && !paused) setShiftLock(!shiftLocked); });
-$('help').addEventListener('click', () => { paused = true; keys.clear(); setShiftLock(false); $('welcome').classList.remove('hidden'); $('start').firstChild.textContent = 'Return to foundry '; });
+$('help').addEventListener('click', () => { paused = true; keys.clear(); setShiftLock(false); $('welcome').classList.remove('hidden'); $('start').firstChild.textContent = 'Return to arena '; });
 window.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(e.code)) e.preventDefault();
   keys.add(e.code);
@@ -476,7 +482,7 @@ window.addEventListener('keydown', e => {
     if (e.code === 'Space') jump();
     if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && started && !paused) setShiftLock(!shiftLocked);
     if (e.code === 'Escape' && shiftLocked) setShiftLock(false);
-    if (e.code === 'KeyR' && started) { teleportTo(); toast('Reset to the courtyard'); }
+    if (e.code === 'KeyR' && started) { teleportTo(); toast('Reset to the arena'); }
     if (e.code === 'Enter' && !started) start();
     if (e.code === 'Escape' && paused) start();
   }
@@ -488,8 +494,13 @@ document.addEventListener('pointerlockchange', () => {
   if (pointerWasLocked && !locked) setShiftLock(false);
   pointerWasLocked = locked;
 });
-canvas.addEventListener('pointerdown', e => { if (!started || paused) return; canvas.focus({ preventScroll: true }); if (shiftLocked) { captureMouse(); return; } dragging = true; canvas.setPointerCapture(e.pointerId); });
-canvas.addEventListener('pointerup', e => { dragging = false; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); });
+canvas.addEventListener('pointerdown', e => {
+  if(!started||paused)return;canvas.focus({preventScroll:true});
+  if(shiftLocked&&document.pointerLockElement!==canvas)captureMouse();
+  if(e.button===0){comboPunch();return;}
+  if(e.button===2&&!shiftLocked){dragging=true;canvas.setPointerCapture(e.pointerId);}
+});
+canvas.addEventListener('pointerup', e => { if(e.button!==2)return;dragging = false; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); });
 canvas.addEventListener('pointercancel', () => dragging = false);
 document.addEventListener('mousemove', e => {
   if (!started || paused || !(dragging || document.pointerLockElement === canvas || (shiftLocked && e.target === canvas))) return;
@@ -514,7 +525,7 @@ proceduralPose(0); actor.position.copy(spawn); updateCamera(1); renderer.render(
 $('loading').classList.add('hidden'); $('welcome').classList.remove('hidden');
 window.__iceGame = {
   ready: true,
-  getState() { return { position: actor.position.toArray(), facing, grounded, locked: castTime >= 0 || punchTime >= 0, activePunch:punchTime>=0?punchSide:null, punchTime, punchesThrown:{...punchesThrown}, punchDuration:PUNCHES[punchSide].duration, punchImpact:PUNCHES[punchSide].impact, animationTime: castTime, cooldown: cooldowns[castKey], cooldowns: {...cooldowns}, activeAbility: castTime>=0?castKey:null, fxAbility:fxKey, casts, activeIceMeshes: fx.userData.activeMeshes || 0, fxVisible: fx.visible, mapName: MAP.name, mapTriangles: MAP.groups.reduce((n, g) => n + g.triangleCount, 0), collisionTriangles: collisionGeometry.getAttribute('position').count / 3, shiftLocked, pointerLocked:document.pointerLockElement===canvas, cameraYaw, cameraPitch, cameraDistance, cameraPosition:camera.position.toArray(), velocity:velocity.toArray(), simTime, coyoteRemaining: coyoteAvailable?Math.max(0,COYOTE_TIME-(simTime-lastGroundedAt)):0, jumps, runAnimation:RUN.source, runAnimationTime:runTime, arenaWallCount:4, torsoPose: poseMatrices.Torso.toArray(), characterName: CHARACTER.name, importedBones: importedBones.length, importedSkinMeshes: skinMeshes.size, sourceCharacterMeshes: CHARACTER.sourceMeshCount, weaponGripError: new THREE.Vector3(...CHARACTER.swordGrip).applyMatrix4(poseMatrices.Sword).distanceTo(new THREE.Vector3(...CHARACTER.rightPalm).applyMatrix4(poseMatrices['Right Arm'])), pinPillars: 0, spikeCount: ICE.spikeCount, impactTime: IMPACT, castDuration: CAST_DURATION, abilityKey: "V", renderer: renderer.info.render, started }; },
+  getState() { return { position: actor.position.toArray(), facing, grounded, locked: castTime >= 0 || punchTime >= 0, activePunch:punchTime>=0?punchSide:null, punchTime, comboStep,comboQueued,punchCooldown,punchInCombo,comboWindow:COMBO_WINDOW,comboCooldownDuration:PUNCH_COOLDOWN, cooldownDurations:{C:ABILITIES.C.cooldown,V:ABILITIES.V.cooldown}, punchesThrown:{...punchesThrown}, punchDuration:PUNCHES[punchSide].duration, punchImpact:PUNCHES[punchSide].impact, animationTime: castTime, cooldown: cooldowns[castKey], cooldowns: {...cooldowns}, activeAbility: castTime>=0?castKey:null, fxAbility:fxKey, casts, activeIceMeshes: fx.userData.activeMeshes || 0, fxVisible: fx.visible, mapName: arena.group.name, mapTriangles:arena.triangles, collisionTriangles:arena.collisionTriangles, arenaHalfSize:arena.halfSize, shiftLocked, pointerLocked:document.pointerLockElement===canvas, cameraYaw, cameraPitch, cameraDistance, cameraPosition:camera.position.toArray(), velocity:velocity.toArray(), simTime, coyoteRemaining: coyoteAvailable?Math.max(0,COYOTE_TIME-(simTime-lastGroundedAt)):0, jumps, runAnimation:RUN.source, runAnimationTime:runTime, arenaWallCount:arena.wallCount, torsoPose: poseMatrices.Torso.toArray(), characterName: CHARACTER.name, importedBones: importedBones.length, importedSkinMeshes: skinMeshes.size, sourceCharacterMeshes: CHARACTER.sourceMeshCount, weaponGripError: new THREE.Vector3(...CHARACTER.swordGrip).applyMatrix4(poseMatrices.Sword).distanceTo(new THREE.Vector3(...CHARACTER.rightPalm).applyMatrix4(poseMatrices['Right Arm'])), pinPillars: 0, spikeCount: ICE.spikeCount, impactTime: IMPACT, castDuration: CAST_DURATION, abilityKey: "V", renderer: renderer.info.render, started }; },
   ...(TEST ? {
     verifyImportedSkin,
     inspectPose() { return Object.fromEntries(Object.entries(poseMatrices).map(([name,matrix])=>[name,matrix.toArray()])); },

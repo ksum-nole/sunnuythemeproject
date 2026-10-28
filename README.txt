@@ -1,81 +1,62 @@
-CINDER 07 — CE1 GROUND ICE SLAM
+CINDER 07 — OPEN TRAINING ARENA
 
 PLAY
-Double-click PLAY MASSIVE ICE SLAM.html on your Desktop. The complete game is embedded
-in that file; no server or internet connection is required.
+Open https://sunnuythemeproject.vercel.app or double-click
+PLAY MASSIVE ICE SLAM.html on the Desktop. The Desktop copy is standalone.
 
 CONTROLS
-WASD / arrows: auto sprint. Shift: toggle shift lock. Space: jump.
-Z: left punch. X: right cross.
-C: original forward ice burst. V: massive ground ice slam.
-Drag: orbit the camera. In shift lock, move the mouse to look and strafe
-with A/D while facing the camera direction. Escape releases the mouse.
-Mouse wheel: zoom. R: reset.
+WASD / arrows: auto sprint. Space: jump. Shift: toggle shift lock.
+Left-click: four-hit punch combo, right / left / right / left.
+Right mouse + drag: orbit. In shift lock, move the mouse freely to look.
+Mouse wheel: zoom. Escape: release the mouse. R: reset the arena spawn.
+C: forward ice stomp. V: massive ground-punch ice slam.
+Z / X remain individual punch shortcuts and share the punch recovery gate.
 
-NEW ANIMATION AND VFX
-Source: Desktop/Place1.rbxl, its saved 221-frame R6 KeyframeSequence.
-The startup now lasts 2.0 seconds: source frames 0–90 play over frames 0–116.
-Source 91 onward remains one-to-one at 60 fps. The final downward slam still
-takes its original three frames (0.05s), landing on frame 120.
+COMBO AND COOLDOWNS
+Each left-click requests one punch. Up to four clicks are buffered, so quick
+clicks continue the sequence without being dropped. Holding the mouse does
+not auto-attack. A finished four-hit combo has a 0.7-second cooldown.
+After an unfinished combo, a one-second pause resets the next hit to right.
+Individual Z / X punches have the same 0.7-second recovery and cannot bypass
+combo cooldown. Reset clears queued punches and cooldowns.
 
-The ground circle is now 85.6 studs across, four times the preceding diameter
-and sixteen times its area. 96 towering outer spikes and 64 inner spikes
-surround the field. Outer spikes reach up to 17.3 studs. Ground cracks radiate
-from the hand contact. All ice remains at ground level at its base.
+C cooldown: 5 seconds from activation.
+V cooldown: 10 seconds from activation.
+The ice abilities have independent cooldowns and share the animation lock.
+On-screen indicators show the combo step, next hand, and remaining cooldowns.
 
-The camera keeps your chosen zoom and pitch during both abilities.
-Movement and facing stay locked during a cast; cooldown allows recovery.
+OPEN MAP
+A clear 112-by-112 world-unit training area replaces the foundry structures
+for now. Four solid walls enclose the floor. All decorative details sit at
+the perimeter. The old foundry source assets remain in dist/assets.
 
-MOVEMENT
-The run uses Pure_Sprint_Animation.blend at its original sprint cadence.
-Movement always uses full sprint speed. Character turns quickly through the
-shortest angle with a smooth response, including while shift lock is enabled.
-Ground movement starts and stops immediately. Air movement supports direct
-steering. Coyote time and jump buffering each allow 120 ms of forgiveness.
-Solid perimeter walls enclose the arena.
+MOVEMENT AND PUNCHES
+The run uses Pure_Sprint_Animation.blend at the original sprint cadence.
+Movement starts and stops immediately, with camera-relative air steering,
+120ms coyote time and jump buffering, and fast smooth character turns.
+Left punch: 0.60s. Right cross: 0.75s. Torso, hips, feet and cape complete a
+full 90-degree turn. The striking arm stays straight at full extension.
+Seven faceted ice crystals follow each original fist bone through every move.
 
-WEB HOSTING
+ICE AND BLENDER
+V uses the Place1.rbxl animation with a readable 2.0-second startup and the
+original three-frame downstrike. A grounded 85.6-stud ice circle is surrounded
+by 160 spikes. Camera zoom stays under manual control during both abilities.
+Desktop/Ice_Slam_CE1_Ground_Ring.blend contains the editable V animation/VFX.
+Desktop/R6 Power Punches/R6_Power_Punches.blend contains the two punch actions.
+
+DEVELOPMENT
 npm ci
 npm run build
-Serve dist/ as a static website. vercel.json configures the Vercel build.
-The JSON files in dist/assets are required build inputs. The HTML bundle is
-generated during build. Vercel builds skip the local Desktop play-file copies.
-
-CHECKS
 npm test
+node source/test-punches.mjs
 node source/test-movement.mjs
-Set GAME_TEST_BROWSER to a Chromium executable if none is auto-detected.
+Set GAME_TEST_BROWSER to a Chromium executable when necessary.
 
-BLENDER
-Desktop/Ice_Slam_CE1_Ground_Ring.blend contains the editable Itrapped skin,
-original named R6 bones, retargeted animation, ground circle, 160 spikes,
-cracks, camera and studio lighting. Timeline markers identify the downstrike
-and impact. Desktop/Ice_Slam_CE1_Preview.png shows the effect after impact.
-
-SOURCE
-source/ce1/extract_motion.py: saved Roblox poses through original Motor6Ds.
-source/ce1/prepare.py: startup timing and imported skin clip.
-source/ce1/build_blender.py: editable Blender scene and browser FX export.
-source/game.js: gameplay. source/index.html: HUD. source/build.mjs: offline build.
-Run npm run build after browser-code edits; it updates the Desktop play files.
-
-VALIDATION
-reviews/ce1/native-validation.json: Blender skin and grounded FX checks.
-reviews/ce1/timing.json: source-frame mapping and original-speed downstrike.
-reviews/browser-validation.json: movement, V cast, animation, collision,
-cooldown, reset, offline loading and browser error checks.
-
-PUNCH ANIMATIONS
-Z throws a quick left punch; X throws a heavier right cross. Both are rigid
-R6 animations with hip-led torque, a guarding off-hand, fast extension and
-follow-through. The dagger is hidden during unarmed punches.
-
-ICE FISTS AND FULL EXTENSION
-Seven faceted ice crystals cap each fist and follow its original arm bone in
-all animations. At punch contact the chest turns fully sideways (about 90
-degrees), the striking arm extends straight forward, and the off-hand guards
-the face. The greater weight transfer and crystal tips increase reach.
-
-FAST 90-DEGREE PUNCHES
-Left punch: 0.60 seconds. Right cross: 0.75 seconds. Full extension is held
-briefly before recovery. Hips, torso, cape and staggered feet complete a full 90-degree turn. The striking shoulder uses the full rigid arm length.
+source/game.js: gameplay, combo input, cooldowns, camera and collision.
+source/open-arena.js: open arena and perimeter collision.
+source/punches.js: both punch animations.
+source/ice-fists.js: bone-attached crystal fist meshes.
+source/build.mjs: standalone browser build; updates local Desktop play files.
+The JSON files in dist/assets are required build inputs. vercel.json builds
+the static dist/ site; Vercel builds skip local Desktop-file copies.
