@@ -1,0 +1,11 @@
+import { chromium } from 'playwright-core';
+import { resolve } from 'node:path';
+const browser=await chromium.launch({headless:true,executablePath:'/Users/jacobatamas/untitled folder/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',args:['--no-first-run','--no-default-browser-check']});
+const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});
+page.on('pageerror',e=>console.log('PAGE_ERROR',String(e)));page.on('console',m=>{if(m.type()==='error')console.log('CONSOLE_ERROR',m.text().slice(0,400))});
+await page.goto('file://'+resolve('dist/index.html')+'?test=1',{waitUntil:'load',timeout:60000});await page.waitForFunction(()=>window.__iceGame?.ready);
+console.log('IMPORTED_SKIN_CHECK',await page.evaluate(()=>window.__iceGame.verifyImportedSkin()));
+await page.getByRole('button',{name:'Enter foundry'}).click();await page.evaluate(()=>window.__iceGame.advance(.4));await page.screenshot({path:'reviews/itrapped-back.png'});
+await page.evaluate(()=>window.__iceGame.view(Math.PI,.28,5.8));await page.screenshot({path:'reviews/itrapped-front.png'});
+await page.keyboard.press('c');await page.evaluate(()=>window.__iceGame.advance(.7));await page.screenshot({path:'reviews/itrapped-windup.png'});
+console.log('IMPORTED_STATE',await page.evaluate(()=>window.__iceGame.getState()));await browser.close();

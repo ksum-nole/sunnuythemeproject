@@ -1,0 +1,17 @@
+import { chromium } from 'playwright-core';
+import { resolve } from 'node:path';
+const browser=await chromium.launch({headless:true,executablePath:'/Users/jacobatamas/untitled folder/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',args:['--no-first-run','--no-default-browser-check']});
+const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});
+page.on('pageerror',e=>console.log('PAGE_ERROR',String(e)));
+page.on('console',msg=>{if(msg.type()==='error'||msg.type()==='warning')console.log('CONSOLE',msg.type(),msg.text().slice(0,450))});
+await page.goto('file://'+resolve('dist/index.html')+'?test=1',{waitUntil:'load',timeout:60000});
+await page.waitForFunction(()=>window.__iceGame?.ready,{timeout:60000});
+console.log('READY',await page.evaluate(()=>window.__iceGame.getState()));
+await page.screenshot({path:'reviews/welcome.png'});
+await page.getByRole('button',{name:'Enter foundry'}).click();
+console.log('STARTED',await page.evaluate(()=>window.__iceGame.advance(.6)));
+await page.screenshot({path:'reviews/game-start.png'});
+await page.keyboard.press('c');
+console.log('CAST',await page.evaluate(()=>window.__iceGame.advance(1.1)));
+await page.screenshot({path:'reviews/ice-impact.png'});
+await browser.close();

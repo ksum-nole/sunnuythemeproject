@@ -1,0 +1,9 @@
+{
+  "name": "cinder-07-ice-slam",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node source/server.mjs", "build": "node source/build.mjs", "test": "node source/test-game.mjs"},
+  "dependencies": {"three": "0.180.0"},
+  "devDependencies": {"esbuild": "0.25.11", "playwright-core": "1.56.1"}
+}
